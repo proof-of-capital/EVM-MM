@@ -5,9 +5,9 @@ import {Test, console} from "forge-std/Test.sol";
 import {Rebalance, RouterType, SwapParams, RebalanceParams, AllowanceParams} from "../src/Rebalance.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPOC} from "./mocks/MockPOC.sol";
-import {MockUniswapV2Router} from "./mocks/MockUniswapV2Router.sol";
+import {MockUniswapV3Router} from "./mocks/MockUniswapV3Router.sol";
 
-contract RebalanceTest is Test {
+contract RebalanceUniswapV3Test is Test {
     Rebalance public rebalance;
     MockERC20 public mainCollateralToken;
     MockERC20 public launchToken;
@@ -19,10 +19,15 @@ contract RebalanceTest is Test {
     MockPOC public fallenPOC2;
     MockPOC public risenPOC1;
     MockPOC public risenPOC2;
-    MockUniswapV2Router public router;
+    MockUniswapV3Router public router;
 
     address public owner;
     address public admin;
+
+    // Helper function to encode Uniswap V3 path: token0 (20 bytes) + fee (3 bytes) + token1 (20 bytes)
+    function encodePath(address token0, uint24 fee, address token1) internal pure returns (bytes memory) {
+        return abi.encodePacked(token0, fee, token1);
+    }
 
     function setUp() public {
         owner = address(this);
@@ -43,7 +48,7 @@ contract RebalanceTest is Test {
         risenPOC2 = new MockPOC(address(launchToken), address(risenCollateral2));
 
         // Deploy router
-        router = new MockUniswapV2Router();
+        router = new MockUniswapV3Router();
 
         // Deploy Rebalance contract
         rebalance = new Rebalance(address(mainCollateralToken), address(launchToken));
@@ -113,35 +118,32 @@ contract RebalanceTest is Test {
         RebalanceParams[] memory fallenParams = new RebalanceParams[](2);
 
         // Fallen param 1: mainCollateral -> fallenCollateral1 -> launchToken via fallenPOC1
-        address[] memory path1 = new address[](2);
-        path1[0] = address(mainCollateralToken);
-        path1[1] = address(fallenCollateral1);
+        // Encode path for Uniswap V3: token0 + fee (3000 = 0.3%) + token1
+        bytes memory path1 = encodePath(address(mainCollateralToken), 3000, address(fallenCollateral1));
         fallenParams[0] = RebalanceParams({
             pocContract: address(fallenPOC1),
             collateral: address(fallenCollateral1),
             amount: 1000e18,
             swapParams: SwapParams({
-                routerType: RouterType.UniswapV2,
+                routerType: RouterType.UniswapV3,
                 routerAddress: address(router),
-                path: path1,
-                data: "",
+                path: new address[](0), // Not used for V3
+                data: path1,
                 amountOutMinimum: 900e18
             })
         });
 
         // Fallen param 2: mainCollateral -> fallenCollateral2 -> launchToken via fallenPOC2
-        address[] memory path2 = new address[](2);
-        path2[0] = address(mainCollateralToken);
-        path2[1] = address(fallenCollateral2);
+        bytes memory path2 = encodePath(address(mainCollateralToken), 3000, address(fallenCollateral2));
         fallenParams[1] = RebalanceParams({
             pocContract: address(fallenPOC2),
             collateral: address(fallenCollateral2),
             amount: 2000e18,
             swapParams: SwapParams({
-                routerType: RouterType.UniswapV2,
+                routerType: RouterType.UniswapV3,
                 routerAddress: address(router),
-                path: path2,
-                data: "",
+                path: new address[](0), // Not used for V3
+                data: path2,
                 amountOutMinimum: 1800e18
             })
         });
@@ -150,35 +152,31 @@ contract RebalanceTest is Test {
         RebalanceParams[] memory risenParams = new RebalanceParams[](2);
 
         // Risen param 1: launchToken -> risenCollateral1 via risenPOC1 -> mainCollateral
-        address[] memory path3 = new address[](2);
-        path3[0] = address(risenCollateral1);
-        path3[1] = address(mainCollateralToken);
+        bytes memory path3 = encodePath(address(risenCollateral1), 3000, address(mainCollateralToken));
         risenParams[0] = RebalanceParams({
             pocContract: address(risenPOC1),
             collateral: address(risenCollateral1),
             amount: 1500e18, // Amount of launch tokens to sell
             swapParams: SwapParams({
-                routerType: RouterType.UniswapV2,
+                routerType: RouterType.UniswapV3,
                 routerAddress: address(router),
-                path: path3,
-                data: "",
+                path: new address[](0), // Not used for V3
+                data: path3,
                 amountOutMinimum: 1350e18
             })
         });
 
         // Risen param 2: launchToken -> risenCollateral2 via risenPOC2 -> mainCollateral
-        address[] memory path4 = new address[](2);
-        path4[0] = address(risenCollateral2);
-        path4[1] = address(mainCollateralToken);
+        bytes memory path4 = encodePath(address(risenCollateral2), 3000, address(mainCollateralToken));
         risenParams[1] = RebalanceParams({
             pocContract: address(risenPOC2),
             collateral: address(risenCollateral2),
             amount: 1500e18, // Will be adjusted to remaining tokens in last iteration
             swapParams: SwapParams({
-                routerType: RouterType.UniswapV2,
+                routerType: RouterType.UniswapV3,
                 routerAddress: address(router),
-                path: path4,
-                data: "",
+                path: new address[](0), // Not used for V3
+                data: path4,
                 amountOutMinimum: 1350e18
             })
         });
@@ -218,35 +216,31 @@ contract RebalanceTest is Test {
         RebalanceParams[] memory rebalanceParams = new RebalanceParams[](2);
 
         // Rebalance param 1: mainCollateral -> fallenCollateral1 -> launchToken via fallenPOC1
-        address[] memory path1 = new address[](2);
-        path1[0] = address(mainCollateralToken);
-        path1[1] = address(fallenCollateral1);
+        bytes memory path1 = encodePath(address(mainCollateralToken), 3000, address(fallenCollateral1));
         rebalanceParams[0] = RebalanceParams({
             pocContract: address(fallenPOC1),
             collateral: address(fallenCollateral1),
             amount: 1000e18,
             swapParams: SwapParams({
-                routerType: RouterType.UniswapV2,
+                routerType: RouterType.UniswapV3,
                 routerAddress: address(router),
-                path: path1,
-                data: "",
+                path: new address[](0), // Not used for V3
+                data: path1,
                 amountOutMinimum: 900e18
             })
         });
 
         // Rebalance param 2: mainCollateral -> fallenCollateral2 -> launchToken via fallenPOC2
-        address[] memory path2 = new address[](2);
-        path2[0] = address(mainCollateralToken);
-        path2[1] = address(fallenCollateral2);
+        bytes memory path2 = encodePath(address(mainCollateralToken), 3000, address(fallenCollateral2));
         rebalanceParams[1] = RebalanceParams({
             pocContract: address(fallenPOC2),
             collateral: address(fallenCollateral2),
             amount: 2000e18,
             swapParams: SwapParams({
-                routerType: RouterType.UniswapV2,
+                routerType: RouterType.UniswapV3,
                 routerAddress: address(router),
-                path: path2,
-                data: "",
+                path: new address[](0), // Not used for V3
+                data: path2,
                 amountOutMinimum: 1800e18
             })
         });
@@ -256,14 +250,12 @@ contract RebalanceTest is Test {
         router.setSwapRate(address(launchToken), address(mainCollateralToken), 11e17); // 1.1:1
 
         // Prepare final swap params (launchToken -> mainCollateralToken)
-        address[] memory finalPath = new address[](2);
-        finalPath[0] = address(launchToken);
-        finalPath[1] = address(mainCollateralToken);
+        bytes memory finalPath = encodePath(address(launchToken), 3000, address(mainCollateralToken));
         SwapParams memory finalSwapParams = SwapParams({
-            routerType: RouterType.UniswapV2,
+            routerType: RouterType.UniswapV3,
             routerAddress: address(router),
-            path: finalPath,
-            data: "",
+            path: new address[](0), // Not used for V3
+            data: finalPath,
             amountOutMinimum: 2700e18 // Minimum expected from 3000e18 launch tokens
         });
 
@@ -299,81 +291,5 @@ contract RebalanceTest is Test {
         // So final launch token balance should equal initial (all new tokens swapped)
         assertEq(finalLaunchToken, initialLaunchToken, "All newly bought launch tokens should be swapped back");
     }
-
-    function test_emergencyWithdraw_Success() public {
-        // Record initial balances
-        uint256 rebalanceBalance = mainCollateralToken.balanceOf(address(rebalance));
-        uint256 ownerBalance = mainCollateralToken.balanceOf(owner);
-        uint256 withdrawAmount = 50000e18;
-
-        // Ensure rebalance contract has enough tokens
-        assertGe(rebalanceBalance, withdrawAmount, "Rebalance contract should have enough tokens");
-
-        // Execute emergency withdraw
-        rebalance.emergencyWithdraw(address(mainCollateralToken), withdrawAmount);
-
-        // Check final balances
-        uint256 finalRebalanceBalance = mainCollateralToken.balanceOf(address(rebalance));
-        uint256 finalOwnerBalance = mainCollateralToken.balanceOf(owner);
-
-        // Verify tokens were transferred
-        assertEq(
-            finalRebalanceBalance,
-            rebalanceBalance - withdrawAmount,
-            "Rebalance contract balance should decrease by withdraw amount"
-        );
-        assertEq(
-            finalOwnerBalance,
-            ownerBalance + withdrawAmount,
-            "Owner balance should increase by withdraw amount"
-        );
-    }
-
- 
-
-    function test_emergencyWithdraw_RevertIfNotOwner() public {
-        // Create a non-owner address
-        address nonOwner = address(0x123);
-        vm.prank(nonOwner);
-
-        // Attempt to call emergency withdraw as non-owner
-        vm.expectRevert();
-        rebalance.emergencyWithdraw(address(mainCollateralToken), 1000e18);
-    }
-
-   
-
-    function test_setAdmin_Success() public {
-        // Create a new admin address
-        address newAdmin = address(0x456);
-        
-        // Verify initial admin is owner
-        assertEq(rebalance.admin(), owner, "Initial admin should be owner");
-
-        // Execute setAdmin
-        rebalance.setAdmin(newAdmin);
-
-        // Verify admin was changed
-        assertEq(rebalance.admin(), newAdmin, "Admin should be updated to new admin");
-        assertTrue(rebalance.admin() != owner, "Admin should not be owner anymore");
-    }
-
-    function test_setAdmin_RevertIfNotOwner() public {
-        // Create a non-owner address
-        address nonOwner = address(0x789);
-        address newAdmin = address(0x456);
-
-        // Attempt to call setAdmin as non-owner
-        vm.prank(nonOwner);
-        vm.expectRevert();
-        rebalance.setAdmin(newAdmin);
-    }
-
-    function test_setAdmin_RevertIfZeroAddress() public {
-        // Attempt to set admin to zero address
-        vm.expectRevert(Rebalance.AdminCannotBeZeroAddress.selector);
-        rebalance.setAdmin(address(0));
-    }
-
 }
 
