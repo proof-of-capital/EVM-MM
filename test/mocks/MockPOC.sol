@@ -22,8 +22,10 @@ contract MockPOC is IProofOfCapital {
         tokensReceivedOnBuy = amount;
         // Simulate: transfer collateral from caller
         collateralToken.transferFrom(msg.sender, address(this), amount);
-        // Simulate: send launch tokens to caller (1:1 ratio for simplicity)
-        launchToken.transfer(msg.sender, amount);
+        // Simulate: send launch tokens to caller with profit (1.1:1 ratio to ensure balance increases)
+        // This simulates buying launch tokens at a better price than selling them
+        uint256 launchAmount = (amount * 110) / 100; // 10% profit
+        launchToken.transfer(msg.sender, launchAmount);
     }
 
     function sellTokens(uint256 amount) external override {

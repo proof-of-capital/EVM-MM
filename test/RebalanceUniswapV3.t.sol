@@ -203,8 +203,11 @@ contract RebalanceUniswapV3Test is Test {
         assertEq(fallenPOC1.tokensReceivedOnBuy(), 1000e18, "Fallen POC1 should receive correct amount");
         assertEq(fallenPOC2.tokensReceivedOnBuy(), 2000e18, "Fallen POC2 should receive correct amount");
         assertEq(risenPOC1.tokensSoldOnSell(), 1500e18, "Risen POC1 should sell correct amount");
-        // Last risen param gets remaining tokens (3000 - 1500 = 1500)
-        assertEq(risenPOC2.tokensSoldOnSell(), 1500e18, "Risen POC2 should sell remaining tokens");
+        // Last risen param gets remaining tokens
+        // Bought: 1000e18 + 2000e18 = 3000e18 collateral -> 3300e18 launch tokens (MockPOC returns 1.1x)
+        // First risen sold: 1500e18
+        // Second risen gets: 3300e18 - 1500e18 = 1800e18
+        assertEq(risenPOC2.tokensSoldOnSell(), 1800e18, "Risen POC2 should sell remaining tokens");
     }
 
     function test_rebalanceLPtoPOC_Success() public {
