@@ -66,6 +66,12 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     uint256 public override accumulatedProfitPocBuyback;
     uint256 public override accumulatedProfitDao;
 
+    // Profit distribution percentages (in basis points, where 100 = 1%)
+    uint256 private constant PERCENTAGE_DENOMINATOR = 100;
+    uint256 private constant PROFIT_SHARE_MERA_FUND = 5; // 5%
+    uint256 private constant PROFIT_SHARE_POC_ROYALTY = 5; // 5%
+    uint256 private constant PROFIT_SHARE_POC_BUYBACK = 45; // 45%
+
     // Modifier to check launch token balance increased
     modifier launchBalanceIncreased() {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
@@ -109,9 +115,9 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     function _distributeProfitInternal(uint256 profit) internal {
         if (profit == 0) return;
 
-        uint256 meraFundAmount = (profit * 5) / 100;
-        uint256 pocRoyaltyAmount = (profit * 5) / 100;
-        uint256 pocBuybackAmount = (profit * 45) / 100;
+        uint256 meraFundAmount = (profit * PROFIT_SHARE_MERA_FUND) / PERCENTAGE_DENOMINATOR;
+        uint256 pocRoyaltyAmount = (profit * PROFIT_SHARE_POC_ROYALTY) / PERCENTAGE_DENOMINATOR;
+        uint256 pocBuybackAmount = (profit * PROFIT_SHARE_POC_BUYBACK) / PERCENTAGE_DENOMINATOR;
         uint256 daoAmount = profit - meraFundAmount - pocRoyaltyAmount - pocBuybackAmount; // Remaining goes to DAO
 
         accumulatedProfitMeraFund += meraFundAmount;
