@@ -4,7 +4,6 @@ pragma solidity 0.8.29;
 import {Script, console} from "forge-std/Script.sol";
 import {Rebalance} from "../src/Rebalance.sol";
 
-
 contract DeployRebalance is Script {
     function run() external returns (Rebalance) {
         // Get addresses from environment variables

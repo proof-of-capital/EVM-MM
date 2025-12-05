@@ -50,16 +50,16 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable override launchToken;
-    
+
     // Withdraw lock timestamp for launch token
     uint256 public override withdrawLaunchLockUntil;
-    
+
     // Profit distribution wallets (immutable)
-    address public override immutable profitWalletMeraFund;
-    address public override immutable profitWalletPocRoyalty;
-    address public override immutable profitWalletPocBuyback;
-    address public override immutable profitWalletDao;
-    
+    address public immutable override profitWalletMeraFund;
+    address public immutable override profitWalletPocRoyalty;
+    address public immutable override profitWalletPocBuyback;
+    address public immutable override profitWalletDao;
+
     // Accumulated profits per wallet
     uint256 public override accumulatedProfitMeraFund;
     uint256 public override accumulatedProfitPocRoyalty;
@@ -72,7 +72,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         _;
         uint256 finalLaunchBalance = launchToken.balanceOf(address(this));
         require(finalLaunchBalance > initialLaunchBalance, LaunchTokenBalanceNotIncreased());
-        
+
         // Distribute profit
         uint256 profit = finalLaunchBalance - initialLaunchBalance;
         _distributeProfitInternal(profit);
@@ -108,17 +108,17 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      */
     function _distributeProfitInternal(uint256 profit) internal {
         if (profit == 0) return;
-        
+
         uint256 meraFundAmount = (profit * 5) / 100;
         uint256 pocRoyaltyAmount = (profit * 5) / 100;
         uint256 pocBuybackAmount = (profit * 45) / 100;
         uint256 daoAmount = profit - meraFundAmount - pocRoyaltyAmount - pocBuybackAmount; // Remaining goes to DAO
-        
+
         accumulatedProfitMeraFund += meraFundAmount;
         accumulatedProfitPocRoyalty += pocRoyaltyAmount;
         accumulatedProfitPocBuyback += pocBuybackAmount;
         accumulatedProfitDao += daoAmount;
-        
+
         emit ProfitDistributed(profit);
     }
 
@@ -134,7 +134,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             launchToken.safeTransfer(profitWalletMeraFund, amount);
             emit ProfitWithdrawn(profitWalletMeraFund, amount);
         }
-        
+
         // Withdraw POC Royalty profit
         if (accumulatedProfitPocRoyalty > 0) {
             uint256 amount = accumulatedProfitPocRoyalty;
@@ -142,7 +142,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             launchToken.safeTransfer(profitWalletPocRoyalty, amount);
             emit ProfitWithdrawn(profitWalletPocRoyalty, amount);
         }
-        
+
         // Withdraw POC Buyback profit
         if (accumulatedProfitPocBuyback > 0) {
             uint256 amount = accumulatedProfitPocBuyback;
@@ -150,7 +150,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             launchToken.safeTransfer(profitWalletPocBuyback, amount);
             emit ProfitWithdrawn(profitWalletPocBuyback, amount);
         }
-        
+
         // Withdraw DAO profit
         if (accumulatedProfitDao > 0) {
             uint256 amount = accumulatedProfitDao;
@@ -204,22 +204,22 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param swapParamsArray Array of swap parameters for DEX swaps
      * @param pocBuyParamsArray Array of POC buy parameters
      */
-    function rebalanceLPtoPOC(
-        SwapParams[] calldata swapParamsArray,
-        POCBuyParams[] calldata pocBuyParamsArray
-    ) external override launchBalanceIncreased {
+    function rebalanceLPtoPOC(SwapParams[] calldata swapParamsArray, POCBuyParams[] calldata pocBuyParamsArray)
+        external
+        override
+        launchBalanceIncreased
+    {
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
             SwapParams calldata swapParams = swapParamsArray[i];
             uint256 amountIn = launchToken.balanceOf(address(this));
 
             swap(amountIn, swapParams);
         }
-        
+
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
             IProofOfCapital(pocParams.pocContract).buyTokens(pocParams.collateralAmount);
         }
-        
     }
 
     /**
@@ -231,20 +231,21 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param pocSellParamsArray Array of POC sell parameters
      * @param swapParamsArray Array of swap parameters for DEX swaps
      */
-    function rebalancePOCtoLP(
-        POCSellParams[] calldata pocSellParamsArray,
-        SwapParams[] calldata swapParamsArray
-    ) external override launchBalanceIncreased {
+    function rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
+        external
+        override
+        launchBalanceIncreased
+    {
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
             POCSellParams calldata pocParams = pocSellParamsArray[i];
             IProofOfCapital(pocParams.pocContract).sellTokens(pocParams.launchAmount);
         }
-        
+
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
             SwapParams calldata swapParams = swapParamsArray[i];
             address collateralToken = _getTokenIn(swapParams);
             uint256 collateralBalance = IERC20(collateralToken).balanceOf(address(this));
-            
+
             swap(collateralBalance, swapParams);
         }
     }
@@ -269,15 +270,15 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             POCSellParams calldata pocParams = pocSellParamsArray[i];
             IProofOfCapital(pocParams.pocContract).sellTokens(pocParams.launchAmount);
         }
-        
+
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
             SwapParams calldata swapParams = swapParamsArray[i];
             address collateralToken = _getTokenIn(swapParams);
             uint256 collateralBalance = IERC20(collateralToken).balanceOf(address(this));
-            
+
             swap(collateralBalance, swapParams);
         }
-        
+
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
             IProofOfCapital(pocParams.pocContract).buyTokens(pocParams.collateralAmount);

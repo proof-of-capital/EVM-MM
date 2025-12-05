@@ -32,12 +32,7 @@ contract MockUniswapV3Router is ISwapRouter {
         return amountOut;
     }
 
-    function exactInput(ExactInputParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amountOut)
-    {
+    function exactInput(ExactInputParams calldata params) external payable override returns (uint256 amountOut) {
         // Decode path: token0 (20 bytes) + fee (3 bytes) + token1 (20 bytes)
         require(params.path.length >= 43, "Invalid path");
         address tokenIn = address(bytes20(params.path[0:20]));
@@ -78,12 +73,7 @@ contract MockUniswapV3Router is ISwapRouter {
         return amountIn;
     }
 
-    function exactOutput(ExactOutputParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amountIn)
-    {
+    function exactOutput(ExactOutputParams calldata params) external payable override returns (uint256 amountIn) {
         // Decode path: token0 (20 bytes) + fee (3 bytes) + token1 (20 bytes)
         require(params.path.length >= 43, "Invalid path");
         address tokenIn = address(bytes20(params.path[0:20]));

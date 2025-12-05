@@ -3,7 +3,15 @@ pragma solidity 0.8.29;
 
 import {Test, console} from "forge-std/Test.sol";
 import {RebalanceV2} from "../src/RebalanceV2.sol";
-import {IRebalanceV2, RouterType, SwapParams, POCBuyParams, POCSellParams, AllowanceParams, ProfitWallets} from "../src/inerfaces/IRebalanceV2.sol";
+import {
+    IRebalanceV2,
+    RouterType,
+    SwapParams,
+    POCBuyParams,
+    POCSellParams,
+    AllowanceParams,
+    ProfitWallets
+} from "../src/inerfaces/IRebalanceV2.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPOC} from "./mocks/MockPOC.sol";
 import {MockUniswapV2Router} from "./mocks/MockUniswapV2Router.sol";
@@ -147,7 +155,7 @@ contract RebalanceV2Test is Test {
         // Mint launch tokens to router for swaps (need enough to return 1.1x)
         // Initial balance in rebalanceV2 is 1e24, so router needs at least 1.1e24 collateral
         collateral1.mint(address(router), 2e24); // Mint enough collateral for 1.1x return
-        
+
         // Mint launch tokens to POC contract for buy operations
         // We buy with 1e24 collateral, MockPOC returns 1.1e24 launch tokens
         launchToken.mint(address(poc1), 2e24); // Mint enough launch tokens
@@ -188,14 +196,8 @@ contract RebalanceV2Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({
-            pocContract: address(poc3),
-            launchAmount: 1500e18
-        });
-        pocSellParamsArray[1] = POCSellParams({
-            pocContract: address(poc4),
-            launchAmount: 1500e18
-        });
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
 
         // Prepare swap params (collateral -> launchToken)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -300,14 +302,8 @@ contract RebalanceV2Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({
-            pocContract: address(poc3),
-            launchAmount: 1500e18
-        });
-        pocSellParamsArray[1] = POCSellParams({
-            pocContract: address(poc4),
-            launchAmount: 1500e18
-        });
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
 
         // Prepare swap params (collateral -> collateral)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -366,7 +362,7 @@ contract RebalanceV2Test is Test {
         // After swap: 1.65e21 collateral -> 1.65e21 target collateral (1:1)
         collateral1.mint(address(router), 2e24);
         collateral2.mint(address(router), 2e24);
-        
+
         // Mint launch tokens to POC contracts for buy operations
         launchToken.mint(address(poc1), 2e24);
         launchToken.mint(address(poc2), 2e24);
@@ -457,11 +453,7 @@ contract RebalanceV2Test is Test {
             pocBuybackBalanceBefore + expectedPocBuyback,
             "POC Buyback should receive profit"
         );
-        assertEq(
-            launchToken.balanceOf(profitWalletDao),
-            daoBalanceBefore + expectedDao,
-            "DAO should receive profit"
-        );
+        assertEq(launchToken.balanceOf(profitWalletDao), daoBalanceBefore + expectedDao, "DAO should receive profit");
 
         // Verify accumulated profits are reset
         assertEq(rebalanceV2.accumulatedProfitMeraFund(), 0, "MeraFund accumulated profit should be reset");
@@ -481,9 +473,7 @@ contract RebalanceV2Test is Test {
         rebalanceV2.withdraw(address(collateral1), withdrawAmount);
 
         assertEq(
-            collateral1.balanceOf(owner),
-            ownerBalanceBefore + withdrawAmount,
-            "Owner should receive withdrawn tokens"
+            collateral1.balanceOf(owner), ownerBalanceBefore + withdrawAmount, "Owner should receive withdrawn tokens"
         );
     }
 
@@ -559,7 +549,7 @@ contract RebalanceV2Test is Test {
 
         // Setup swap rate that doesn't generate profit (1:1)
         router.setSwapRate(address(launchToken), address(collateral1), 1e18); // 1:1
-        
+
         // Use very small amount that won't generate enough profit
         // Start: 1e24 launchToken
         // Swap: 1e24 launchToken -> 1e24 collateral (1:1)
@@ -584,14 +574,10 @@ contract RebalanceV2Test is Test {
         // Use a new token that doesn't have allowance set in setUp
         MockERC20 newToken = new MockERC20("New Token", "NEW");
         MockUniswapV2Router newRouter = new MockUniswapV2Router();
-        
+
         // First set a specific allowance amount
         AllowanceParams[] memory setAllowances = new AllowanceParams[](1);
-        setAllowances[0] = AllowanceParams({
-            token: address(newToken),
-            spender: address(newRouter),
-            amount: 1000e18
-        });
+        setAllowances[0] = AllowanceParams({token: address(newToken), spender: address(newRouter), amount: 1000e18});
         rebalanceV2.increaseAllowanceForSpenders(setAllowances);
 
         // Check allowance before
@@ -600,11 +586,7 @@ contract RebalanceV2Test is Test {
 
         // Decrease allowance
         AllowanceParams[] memory decreaseAllowances = new AllowanceParams[](1);
-        decreaseAllowances[0] = AllowanceParams({
-            token: address(newToken),
-            spender: address(newRouter),
-            amount: 500e18
-        });
+        decreaseAllowances[0] = AllowanceParams({token: address(newToken), spender: address(newRouter), amount: 500e18});
         rebalanceV2.decreaseAllowanceForSpenders(decreaseAllowances);
 
         // Check allowance after
@@ -615,11 +597,7 @@ contract RebalanceV2Test is Test {
     function test_decreaseAllowanceForSpenders_RevertIfNotOwner() public {
         address nonOwner = address(0x123);
         AllowanceParams[] memory allowances = new AllowanceParams[](1);
-        allowances[0] = AllowanceParams({
-            token: address(collateral1),
-            spender: address(router),
-            amount: 1000e18
-        });
+        allowances[0] = AllowanceParams({token: address(collateral1), spender: address(router), amount: 1000e18});
 
         vm.prank(nonOwner);
         vm.expectRevert();
@@ -629,11 +607,7 @@ contract RebalanceV2Test is Test {
     function test_increaseAllowanceForSpenders_RevertIfNotOwner() public {
         address nonOwner = address(0x123);
         AllowanceParams[] memory allowances = new AllowanceParams[](1);
-        allowances[0] = AllowanceParams({
-            token: address(collateral1),
-            spender: address(router),
-            amount: 1000e18
-        });
+        allowances[0] = AllowanceParams({token: address(collateral1), spender: address(router), amount: 1000e18});
 
         vm.prank(nonOwner);
         vm.expectRevert();
@@ -656,11 +630,8 @@ contract RebalanceV2Test is Test {
         });
 
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
-        pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24
-        });
+        pocBuyParamsArray[0] =
+            POCBuyParams({pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24});
 
         router.setSwapRate(address(launchToken), address(collateral1), 11e17);
         collateral1.mint(address(router), 2e24);
@@ -737,10 +708,7 @@ contract RebalanceV2Test is Test {
         launchToken.mint(address(rebalanceV2), 5000e18);
 
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
-        pocSellParamsArray[0] = POCSellParams({
-            pocContract: address(poc3),
-            launchAmount: 1500e18
-        });
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
 
         SwapParams[] memory swapParamsArray = new SwapParams[](1);
         // Empty path should cause revert
@@ -766,10 +734,7 @@ contract RebalanceV2Test is Test {
         launchToken.mint(address(rebalanceV2), 5000e18);
 
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
-        pocSellParamsArray[0] = POCSellParams({
-            pocContract: address(poc3),
-            launchAmount: 1500e18
-        });
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
 
         SwapParams[] memory swapParamsArray = new SwapParams[](1);
         // Path with less than 20 bytes should cause revert

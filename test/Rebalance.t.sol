@@ -325,14 +325,8 @@ contract RebalanceTest is Test {
             rebalanceBalance - withdrawAmount,
             "Rebalance contract balance should decrease by withdraw amount"
         );
-        assertEq(
-            finalOwnerBalance,
-            ownerBalance + withdrawAmount,
-            "Owner balance should increase by withdraw amount"
-        );
+        assertEq(finalOwnerBalance, ownerBalance + withdrawAmount, "Owner balance should increase by withdraw amount");
     }
-
- 
 
     function test_emergencyWithdraw_RevertIfNotOwner() public {
         // Create a non-owner address
@@ -344,12 +338,10 @@ contract RebalanceTest is Test {
         rebalance.emergencyWithdraw(address(mainCollateralToken), 1000e18);
     }
 
-   
-
     function test_setAdmin_Success() public {
         // Create a new admin address
         address newAdmin = address(0x456);
-        
+
         // Verify initial admin is owner
         assertEq(rebalance.admin(), owner, "Initial admin should be owner");
 
@@ -377,6 +369,5 @@ contract RebalanceTest is Test {
         vm.expectRevert(Rebalance.AdminCannotBeZeroAddress.selector);
         rebalance.setAdmin(address(0));
     }
-
 }
 

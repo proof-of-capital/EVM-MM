@@ -3,7 +3,15 @@ pragma solidity 0.8.29;
 
 import {Test, console} from "forge-std/Test.sol";
 import {RebalanceV2} from "../src/RebalanceV2.sol";
-import {IRebalanceV2, RouterType, SwapParams, POCBuyParams, POCSellParams, AllowanceParams, ProfitWallets} from "../src/inerfaces/IRebalanceV2.sol";
+import {
+    IRebalanceV2,
+    RouterType,
+    SwapParams,
+    POCBuyParams,
+    POCSellParams,
+    AllowanceParams,
+    ProfitWallets
+} from "../src/inerfaces/IRebalanceV2.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPOC} from "./mocks/MockPOC.sol";
 import {MockQuickswapV3Router} from "./mocks/MockQuickswapV3Router.sol";
@@ -146,7 +154,7 @@ contract RebalanceV2QuickswapV3Test is Test {
         // Mint enough collateral to router for 1.1x return
         // Initial balance in rebalanceV2 is 1e24, so router needs at least 1.1e24 collateral
         collateral1.mint(address(router), 2e24);
-        
+
         // Mint launch tokens to POC contract for buy operations
         // We buy with 1e24 collateral, MockPOC returns 1.1e24 launch tokens
         launchToken.mint(address(poc1), 2e24);
@@ -187,14 +195,8 @@ contract RebalanceV2QuickswapV3Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({
-            pocContract: address(poc3),
-            launchAmount: 1500e18
-        });
-        pocSellParamsArray[1] = POCSellParams({
-            pocContract: address(poc4),
-            launchAmount: 1500e18
-        });
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
 
         // Prepare swap params (collateral -> launchToken)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -289,14 +291,8 @@ contract RebalanceV2QuickswapV3Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({
-            pocContract: address(poc3),
-            launchAmount: 1500e18
-        });
-        pocSellParamsArray[1] = POCSellParams({
-            pocContract: address(poc4),
-            launchAmount: 1500e18
-        });
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
 
         // Prepare swap params (collateral -> collateral)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -351,7 +347,7 @@ contract RebalanceV2QuickswapV3Test is Test {
         // After swap: 1.65e21 collateral -> 1.65e21 target collateral (1:1)
         collateral1.mint(address(router), 2e24);
         collateral2.mint(address(router), 2e24);
-        
+
         // Mint launch tokens to POC contracts for buy operations
         launchToken.mint(address(poc1), 2e24);
         launchToken.mint(address(poc2), 2e24);
@@ -440,11 +436,7 @@ contract RebalanceV2QuickswapV3Test is Test {
             pocBuybackBalanceBefore + expectedPocBuyback,
             "POC Buyback should receive profit"
         );
-        assertEq(
-            launchToken.balanceOf(profitWalletDao),
-            daoBalanceBefore + expectedDao,
-            "DAO should receive profit"
-        );
+        assertEq(launchToken.balanceOf(profitWalletDao), daoBalanceBefore + expectedDao, "DAO should receive profit");
 
         // Verify accumulated profits are reset
         assertEq(rebalanceV2.accumulatedProfitMeraFund(), 0, "MeraFund accumulated profit should be reset");
@@ -467,7 +459,7 @@ contract RebalanceV2QuickswapV3Test is Test {
 
         // Setup swap rate that doesn't generate profit (1:1)
         router.setSwapRate(address(launchToken), address(collateral1), 1e18); // 1:1
-        
+
         // Use very small amount that won't generate enough profit
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({

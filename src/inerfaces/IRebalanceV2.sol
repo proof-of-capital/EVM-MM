@@ -196,10 +196,7 @@ interface IRebalanceV2 {
     ///      3. Check that launch balance increased (profit)
     /// @param swapParamsArray Array of swap parameters for DEX swaps
     /// @param pocBuyParamsArray Array of POC buy parameters
-    function rebalanceLPtoPOC(
-        SwapParams[] calldata swapParamsArray,
-        POCBuyParams[] calldata pocBuyParamsArray
-    ) external;
+    function rebalanceLPtoPOC(SwapParams[] calldata swapParamsArray, POCBuyParams[] calldata pocBuyParamsArray) external;
 
     /// @notice POC to LP rebalancing
     /// @dev Algorithm:
@@ -208,10 +205,8 @@ interface IRebalanceV2 {
     ///      3. Check that in profit (launch balance increased)
     /// @param pocSellParamsArray Array of POC sell parameters
     /// @param swapParamsArray Array of swap parameters for DEX swaps
-    function rebalancePOCtoLP(
-        POCSellParams[] calldata pocSellParamsArray,
-        SwapParams[] calldata swapParamsArray
-    ) external;
+    function rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
+        external;
 
     /// @notice POC to LP to POC rebalancing
     /// @dev Algorithm:
