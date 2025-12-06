@@ -340,6 +340,14 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
                 amountOutMinimum: swapParams.amountOutMinimum
             });
             amountOut = IQuickswapV3Router(swapParams.routerAddress).exactInput(params);
+        } else if (swapParams.routerType == RouterType.SwapRouterBase) {
+            ISwapRouterBase.ExactInputParams memory params = ISwapRouterBase.ExactInputParams({
+                path: swapParams.data,
+                recipient: address(this),
+                amountIn: amountIn,
+                amountOutMinimum: swapParams.amountOutMinimum
+            });
+            amountOut = ISwapRouterBase(swapParams.routerAddress).exactInput(params);
         }
     }
 }

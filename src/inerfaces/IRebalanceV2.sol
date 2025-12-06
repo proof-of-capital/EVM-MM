@@ -12,12 +12,13 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 enum RouterType {
     UniswapV2,
     UniswapV3,
-    QuickswapV3
+    QuickswapV3,
+    SwapRouterBase
 }
 
 /**
  * @notice Parameters for DEX swap operations
- * @param routerType Type of router to use (UniswapV2, UniswapV3, or QuickswapV3)
+ * @param routerType Type of router to use (UniswapV2, UniswapV3, QuickswapV3, or SwapRouterBase)
  * @param routerAddress Address of the router contract
  * @param path Swap path for V2 routers (empty array for V3 routers)
  * @param data Encoded path for V3 routers (token0 + fee + token1)
