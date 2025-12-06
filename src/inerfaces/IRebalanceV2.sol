@@ -92,6 +92,9 @@ interface IRebalanceV2 {
     /// @notice Thrown when trying to withdraw launch token before lock expires
     error WithdrawLaunchLocked();
 
+    /// @notice Thrown when trying to perform operation before withdraw lock expires
+    error WithdrawLockNotExpired();
+
     /// @notice Thrown when profit wallet address is zero
     error InvalidProfitWalletAddress();
 

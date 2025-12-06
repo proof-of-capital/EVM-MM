@@ -168,9 +168,11 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
 
     /**
      * @notice Increase allowance for tokens to spenders (only owner)
+     * @dev Cannot increase allowance for launch token if locked
      * @param allowances Array of allowance parameters
      */
     function increaseAllowanceForSpenders(AllowanceParams[] calldata allowances) external override onlyOwner {
+        require(block.timestamp >= withdrawLaunchLockUntil, WithdrawLockNotExpired());
         for (uint256 i = 0; i < allowances.length; i++) {
             AllowanceParams memory params = allowances[i];
             IERC20(params.token).safeIncreaseAllowance(params.spender, params.amount);

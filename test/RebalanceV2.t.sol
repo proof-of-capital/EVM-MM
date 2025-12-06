@@ -614,6 +614,42 @@ contract RebalanceV2Test is Test {
         rebalanceV2.increaseAllowanceForSpenders(allowances);
     }
 
+    function test_increaseAllowanceForSpenders_RevertIfLockNotExpired() public {
+        // Set lock
+        uint256 lockUntil = block.timestamp + 1000;
+        rebalanceV2.setWithdrawLaunchLock(lockUntil);
+
+        // Try to increase allowance while lock is active (should fail)
+        AllowanceParams[] memory allowances = new AllowanceParams[](1);
+        allowances[0] = AllowanceParams({token: address(collateral1), spender: address(router), amount: 1000e18});
+
+        vm.expectRevert(IRebalanceV2.WithdrawLockNotExpired.selector);
+        rebalanceV2.increaseAllowanceForSpenders(allowances);
+    }
+
+    function test_increaseAllowanceForSpenders_SuccessAfterLockExpires() public {
+        // Set lock
+        uint256 lockUntil = block.timestamp + 1000;
+        rebalanceV2.setWithdrawLaunchLock(lockUntil);
+
+        // Fast forward time to after lock expires
+        vm.warp(lockUntil);
+
+        // Use a new token that doesn't have allowance set in setUp
+        MockERC20 newToken = new MockERC20("New Token", "NEW");
+        MockUniswapV2Router newRouter = new MockUniswapV2Router();
+
+        // Increase allowance after lock expires (should succeed)
+        AllowanceParams[] memory allowances = new AllowanceParams[](1);
+        allowances[0] = AllowanceParams({token: address(newToken), spender: address(newRouter), amount: 1000e18});
+
+        rebalanceV2.increaseAllowanceForSpenders(allowances);
+
+        // Verify allowance was set
+        uint256 allowance = newToken.allowance(address(rebalanceV2), address(newRouter));
+        assertEq(allowance, 1000e18, "Allowance should be set after lock expires");
+    }
+
     function test_withdrawProfits_PartialAccumulated() public {
         // Generate profit for only some wallets
         // Setup a simple profitable swap
