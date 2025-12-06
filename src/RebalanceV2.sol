@@ -224,7 +224,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
 
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
+            IProofOfCapital(pocParams.pocContract)
+                .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
         }
     }
 
@@ -250,7 +251,10 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
             SwapParams calldata swapParams = swapParamsArray[i];
             address collateralToken = _getTokenIn(swapParams);
-            require(collateralToken == address(IProofOfCapital(pocSellParamsArray[i].pocContract).collateralToken()), InvalidCollateralToken());
+            require(
+                collateralToken == address(IProofOfCapital(pocSellParamsArray[i].pocContract).collateralToken()),
+                InvalidCollateralToken()
+            );
             address tokenOut = _getTokenOut(swapParams);
             require(tokenOut == address(launchToken), InvalidLaunchToken());
             uint256 collateralBalance = IERC20(collateralToken).balanceOf(address(this));
@@ -283,7 +287,10 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
             SwapParams calldata swapParams = swapParamsArray[i];
             address tokenIn = _getTokenIn(swapParams);
-            require(address(IProofOfCapital(pocSellParamsArray[i].pocContract).collateralToken()) == tokenIn, InvalidCollateralToken());
+            require(
+                address(IProofOfCapital(pocSellParamsArray[i].pocContract).collateralToken()) == tokenIn,
+                InvalidCollateralToken()
+            );
             address tokenOut = _getTokenOut(swapParams);
             require(tokenOut == pocBuyParamsArray[i].collateral, InvalidCollateralToken());
             uint256 tokenInBalance = IERC20(tokenIn).balanceOf(address(this));
@@ -293,7 +300,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
 
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
+            IProofOfCapital(pocParams.pocContract)
+                .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
         }
     }
 
