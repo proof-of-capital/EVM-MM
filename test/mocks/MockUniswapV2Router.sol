@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.29;
 
-import {IUniswapV2Router02} from "../../src/inerfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Router02} from "../../src/interfaces/IUniswapV2Router02.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Custom errors

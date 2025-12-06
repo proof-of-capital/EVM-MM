@@ -11,7 +11,7 @@ import {
     POCSellParams,
     AllowanceParams,
     ProfitWallets
-} from "../src/inerfaces/IRebalanceV2.sol";
+} from "../src/interfaces/IRebalanceV2.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPOC} from "./mocks/MockPOC.sol";
 import {MockUniswapV2Router} from "./mocks/MockUniswapV2Router.sol";

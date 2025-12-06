@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.29;
 
-import {ISwapRouter} from "../../src/inerfaces/ISwapRouter.sol";
+import {ISwapRouter} from "../../src/interfaces/ISwapRouter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Mock UniswapV3 Router

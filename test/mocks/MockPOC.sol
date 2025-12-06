@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.29;
 
-import {IProofOfCapital} from "../../src/inerfaces/IProofOfCapital.sol";
+import {IProofOfCapital} from "../../src/interfaces/IProofOfCapital.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Mock POC contract

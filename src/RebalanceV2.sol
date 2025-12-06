@@ -32,15 +32,15 @@ pragma solidity 0.8.29;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./inerfaces/IRebalanceV2.sol";
-import "./inerfaces/IProofOfCapital.sol";
-import "./inerfaces/IQuickswapV3Router.sol";
-import "./inerfaces/IQuoterQuickswap.sol";
-import "./inerfaces/IQuoterV2.sol";
-import "./inerfaces/ISwapRouter.sol";
-import "./inerfaces/ISwapRouterBase.sol";
-import "./inerfaces/IUniswapV2Router01.sol";
-import "./inerfaces/IUniswapV2Router02.sol";
+import "./interfaces/IRebalanceV2.sol";
+import "./interfaces/IProofOfCapital.sol";
+import "./interfaces/IQuickswapV3Router.sol";
+import "./interfaces/IQuoterQuickswap.sol";
+import "./interfaces/IQuoterV2.sol";
+import "./interfaces/ISwapRouter.sol";
+import "./interfaces/ISwapRouterBase.sol";
+import "./interfaces/IUniswapV2Router01.sol";
+import "./interfaces/IUniswapV2Router02.sol";
 
 /**
  * @title RebalanceV2 Contract for Proof of Capital
