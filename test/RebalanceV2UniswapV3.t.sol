@@ -175,7 +175,8 @@ contract RebalanceV2UniswapV3Test is Test {
         assertGt(finalLaunchToken, initialLaunchToken, "Launch token balance should increase");
 
         // Verify POC interactions
-        assertEq(poc1.tokensReceivedOnBuy(), 1e24, "POC1 should receive correct amount");
+        // Swap returns 1.1e24 collateral, so POC receives 1.1e24
+        assertEq(poc1.tokensReceivedOnBuy(), 11e23, "POC1 should receive correct amount");
 
         // Verify profit distribution
         uint256 profit = finalLaunchToken - initialLaunchToken;
@@ -465,17 +466,21 @@ contract RebalanceV2UniswapV3Test is Test {
             amountOutMinimum: 900e18
         });
 
-        // Setup swap rate that doesn't generate profit (1:1)
-        router.setSwapRate(address(launchToken), address(collateral1), 1e18); // 1:1
-
-        // Use very small amount that won't generate enough profit
+        // Setup scenario that doesn't generate profit
+        // Start: 1e24 launchToken
+        // Swap: 1e24 launchToken -> 0.9e24 collateral (0.9:1)
+        // Buy: 0.9e24 collateral -> 0.99e24 launchToken (0.9 * 1.1)
+        // Net: -1e24 + 0.99e24 = -0.01e24 (loss, will revert)
+        router.setSwapRate(address(launchToken), address(collateral1), 9e17); // 0.9:1 - will get 0.9e24 collateral
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1e20 // Use very small amount, profit won't be enough
+            collateralAmount: 1e24 // Not used, code uses balanceOf
         });
         collateral1.mint(address(router), 2e24); // Mint enough collateral
+        // Mint launch tokens to POC contract for buy operations
+        launchToken.mint(address(poc1), 2e24); // Mint enough launch tokens
 
         // Note: allowance for collateral1 is already set in setUp()
 

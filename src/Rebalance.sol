@@ -177,7 +177,7 @@ contract Rebalance is Ownable {
                 fallenCollateralAmount = swap(params.amount, params.swapParams);
             }
             // Step 2: fallen collateral -> launchToken via POC (buy)
-            IProofOfCapital(params.pocContract).buyTokens(fallenCollateralAmount);
+            IProofOfCapital(params.pocContract).buyLaunchTokens(fallenCollateralAmount);
         }
 
         // Calculate total launch tokens bought
@@ -195,7 +195,7 @@ contract Rebalance is Ownable {
             }
 
             // Step 3: launchToken -> risen collateral via POC (sell)
-            IProofOfCapital(params.pocContract).sellTokens(launchTokensToSell);
+            IProofOfCapital(params.pocContract).sellLaunchTokens(launchTokensToSell);
             totalLaunchTokensSold += launchTokensToSell;
 
             // Step 4: risen collateral -> mainCollateralToken via DEX
@@ -232,7 +232,7 @@ contract Rebalance is Ownable {
             }
 
             // Step 2: fallen collateral -> launchToken via POC
-            IProofOfCapital(params.pocContract).buyTokens(fallenCollateralAmount);
+            IProofOfCapital(params.pocContract).buyLaunchTokens(fallenCollateralAmount);
         }
 
         // Step 3: launchToken -> mainCollateralToken via DEX (only newly bought tokens)

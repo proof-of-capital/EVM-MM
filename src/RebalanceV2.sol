@@ -217,12 +217,14 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         POCBuyParams[] calldata pocBuyParamsArray
     ) external override launchBalanceIncreased {
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
+            address collateralToken = _getTokenOut(swapParamsArray[i]);
+            require(collateralToken == pocBuyParamsArray[i].collateral, InvalidCollateralToken());
             _swap(amountsIn[i], swapParamsArray[i]);
         }
 
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).buyTokens(pocParams.collateralAmount);
+            IProofOfCapital(pocParams.pocContract).buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
         }
     }
 
@@ -242,12 +244,15 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     {
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
             POCSellParams calldata pocParams = pocSellParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).sellTokens(pocParams.launchAmount);
+            IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount);
         }
 
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
             SwapParams calldata swapParams = swapParamsArray[i];
             address collateralToken = _getTokenIn(swapParams);
+            require(collateralToken == address(IProofOfCapital(pocSellParamsArray[i].pocContract).collateralToken()), InvalidCollateralToken());
+            address tokenOut = _getTokenOut(swapParams);
+            require(tokenOut == address(launchToken), InvalidLaunchToken());
             uint256 collateralBalance = IERC20(collateralToken).balanceOf(address(this));
 
             _swap(collateralBalance, swapParams);
@@ -272,20 +277,23 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     ) external override launchBalanceIncreased {
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
             POCSellParams calldata pocParams = pocSellParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).sellTokens(pocParams.launchAmount);
+            IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount);
         }
 
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
             SwapParams calldata swapParams = swapParamsArray[i];
-            address collateralToken = _getTokenIn(swapParams);
-            uint256 collateralBalance = IERC20(collateralToken).balanceOf(address(this));
+            address tokenIn = _getTokenIn(swapParams);
+            require(address(IProofOfCapital(pocSellParamsArray[i].pocContract).collateralToken()) == tokenIn, InvalidCollateralToken());
+            address tokenOut = _getTokenOut(swapParams);
+            require(tokenOut == pocBuyParamsArray[i].collateral, InvalidCollateralToken());
+            uint256 tokenInBalance = IERC20(tokenIn).balanceOf(address(this));
 
-            _swap(collateralBalance, swapParams);
+            _swap(tokenInBalance, swapParams);
         }
 
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).buyTokens(pocParams.collateralAmount);
+            IProofOfCapital(pocParams.pocContract).buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
         }
     }
 
@@ -305,6 +313,28 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             // Get first 20 bytes explicitly using slice
             bytes calldata first20Bytes = swapParams.data[0:20];
             return address(bytes20(first20Bytes));
+        }
+    }
+
+    /**
+     * @notice Get output token address from swap params
+     * @dev For V2: from path[path.length - 1], For V3: from encoded path in data (last 20 bytes)
+     * @param swapParams Swap parameters
+     * @return Output token address
+     */
+    function _getTokenOut(SwapParams calldata swapParams) internal pure returns (address) {
+        if (swapParams.routerType == RouterType.UniswapV2) {
+            require(swapParams.path.length > 0, InvalidPath());
+            return swapParams.path[swapParams.path.length - 1];
+        } else {
+            // For V3, path is encoded as: token0 (20 bytes) + fee (3 bytes) + token1 (20 bytes)
+            // For multi-hop: token0 (20) + fee (3) + token1 (20) + fee (3) + token2 (20) + ...
+            // Output token is always the last 20 bytes
+            require(swapParams.data.length >= 20, InvalidV3Path());
+            // Get last 20 bytes explicitly using slice
+            uint256 dataLength = swapParams.data.length;
+            bytes calldata last20Bytes = swapParams.data[dataLength - 20:dataLength];
+            return address(bytes20(last20Bytes));
         }
     }
 

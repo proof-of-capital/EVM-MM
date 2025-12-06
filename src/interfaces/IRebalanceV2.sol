@@ -111,6 +111,12 @@ interface IRebalanceV2 {
     /// @notice Thrown when swap path is invalid
     error InvalidPath();
 
+    /// @notice Thrown when collateral token is invalid
+    error InvalidCollateralToken();
+
+    /// @notice Thrown when launch token is invalid
+    error InvalidLaunchToken();
+
     // ============ Events ============
 
     /// @notice Emitted when withdraw lock is updated
