@@ -621,16 +621,10 @@ contract RebalanceV2UniswapV3Test is Test {
 
         // Approve SwapRouterBase router to spend tokens from rebalance contract
         AllowanceParams[] memory allowances = new AllowanceParams[](2);
-        allowances[0] = AllowanceParams({
-            token: address(collateral3),
-            spender: address(swapRouterBase),
-            amount: type(uint256).max
-        });
-        allowances[1] = AllowanceParams({
-            token: address(collateral4),
-            spender: address(swapRouterBase),
-            amount: type(uint256).max
-        });
+        allowances[0] =
+            AllowanceParams({token: address(collateral3), spender: address(swapRouterBase), amount: type(uint256).max});
+        allowances[1] =
+            AllowanceParams({token: address(collateral4), spender: address(swapRouterBase), amount: type(uint256).max});
         rebalanceV2.increaseAllowanceForSpenders(allowances);
 
         // Execute rebalance
@@ -723,16 +717,10 @@ contract RebalanceV2UniswapV3Test is Test {
         // Approve SwapRouterBase router to spend tokens from rebalance contract
         // Note: allowances for collateral1 to poc1 and collateral2 to poc2 are already set in setUp()
         AllowanceParams[] memory allowances = new AllowanceParams[](2);
-        allowances[0] = AllowanceParams({
-            token: address(collateral3),
-            spender: address(swapRouterBase),
-            amount: type(uint256).max
-        });
-        allowances[1] = AllowanceParams({
-            token: address(collateral4),
-            spender: address(swapRouterBase),
-            amount: type(uint256).max
-        });
+        allowances[0] =
+            AllowanceParams({token: address(collateral3), spender: address(swapRouterBase), amount: type(uint256).max});
+        allowances[1] =
+            AllowanceParams({token: address(collateral4), spender: address(swapRouterBase), amount: type(uint256).max});
         rebalanceV2.increaseAllowanceForSpenders(allowances);
 
         // Execute rebalance
