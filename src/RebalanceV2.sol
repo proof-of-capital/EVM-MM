@@ -174,8 +174,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     function increaseAllowanceForSpenders(AllowanceParams[] calldata allowances) external override onlyOwner {
         require(block.timestamp >= withdrawLaunchLockUntil, WithdrawLockNotExpired());
         for (uint256 i = 0; i < allowances.length; i++) {
-            AllowanceParams memory params = allowances[i];
-            IERC20(params.token).safeIncreaseAllowance(params.spender, params.amount);
+            IERC20(allowances[i].token).safeIncreaseAllowance(allowances[i].spender, allowances[i].amount);
         }
     }
 
@@ -185,8 +184,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      */
     function decreaseAllowanceForSpenders(AllowanceParams[] calldata allowances) external override onlyOwner {
         for (uint256 i = 0; i < allowances.length; i++) {
-            AllowanceParams memory params = allowances[i];
-            IERC20(params.token).safeDecreaseAllowance(params.spender, params.amount);
+            IERC20(allowances[i].token).safeDecreaseAllowance(allowances[i].spender, allowances[i].amount);
         }
     }
 
@@ -319,7 +317,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param swapParams Swap parameters
      * @return amountOut Amount of output tokens received
      */
-    function swap(uint256 amountIn, SwapParams memory swapParams) internal returns (uint256 amountOut) {
+    function swap(uint256 amountIn, SwapParams calldata swapParams) internal returns (uint256 amountOut) {
         if (swapParams.routerType == RouterType.UniswapV2) {
             uint256[] memory amounts = IUniswapV2Router02(swapParams.routerAddress)
                 .swapExactTokensForTokens(
