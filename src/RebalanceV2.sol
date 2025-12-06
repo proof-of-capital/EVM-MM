@@ -217,7 +217,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         POCBuyParams[] calldata pocBuyParamsArray
     ) external override launchBalanceIncreased {
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
-            swap(amountsIn[i], swapParamsArray[i]);
+            _swap(amountsIn[i], swapParamsArray[i]);
         }
 
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
@@ -250,7 +250,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             address collateralToken = _getTokenIn(swapParams);
             uint256 collateralBalance = IERC20(collateralToken).balanceOf(address(this));
 
-            swap(collateralBalance, swapParams);
+            _swap(collateralBalance, swapParams);
         }
     }
 
@@ -280,7 +280,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             address collateralToken = _getTokenIn(swapParams);
             uint256 collateralBalance = IERC20(collateralToken).balanceOf(address(this));
 
-            swap(collateralBalance, swapParams);
+            _swap(collateralBalance, swapParams);
         }
 
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
@@ -315,7 +315,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param swapParams Swap parameters
      * @return amountOut Amount of output tokens received
      */
-    function swap(uint256 amountIn, SwapParams calldata swapParams) internal returns (uint256 amountOut) {
+    function _swap(uint256 amountIn, SwapParams calldata swapParams) internal returns (uint256 amountOut) {
         if (swapParams.routerType == RouterType.UniswapV2) {
             uint256[] memory amounts = IUniswapV2Router02(swapParams.routerAddress)
                 .swapExactTokensForTokens(
