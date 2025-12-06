@@ -208,18 +208,16 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      *      2. Buy launch from POC contract(s) using collateral(s)
      *      3. Check that launch balance increased (profit)
      * @param swapParamsArray Array of swap parameters for DEX swaps
+     * @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
      * @param pocBuyParamsArray Array of POC buy parameters
      */
-    function rebalanceLPtoPOC(SwapParams[] calldata swapParamsArray, POCBuyParams[] calldata pocBuyParamsArray)
-        external
-        override
-        launchBalanceIncreased
-    {
+    function rebalanceLPtoPOC(
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external override launchBalanceIncreased {
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
-            SwapParams calldata swapParams = swapParamsArray[i];
-            uint256 amountIn = launchToken.balanceOf(address(this));
-
-            swap(amountIn, swapParams);
+            swap(amountsIn[i], swapParamsArray[i]);
         }
 
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {

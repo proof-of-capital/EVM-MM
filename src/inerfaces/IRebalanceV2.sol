@@ -198,8 +198,13 @@ interface IRebalanceV2 {
     ///      2. Buy launch from POC contract(s) using collateral(s)
     ///      3. Check that launch balance increased (profit)
     /// @param swapParamsArray Array of swap parameters for DEX swaps
+    /// @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
     /// @param pocBuyParamsArray Array of POC buy parameters
-    function rebalanceLPtoPOC(SwapParams[] calldata swapParamsArray, POCBuyParams[] calldata pocBuyParamsArray) external;
+    function rebalanceLPtoPOC(
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external;
 
     /// @notice POC to LP rebalancing
     /// @dev Algorithm:

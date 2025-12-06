@@ -161,8 +161,12 @@ contract RebalanceV2QuickswapV3Test is Test {
 
         // Note: allowance for collateral1 is already set in setUp()
 
+        // Prepare amountsIn array (use entire balance: 1e24)
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken; // Use entire balance
+
         // Execute rebalance
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, pocBuyParamsArray);
+        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         // Check final balances
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
@@ -401,7 +405,11 @@ contract RebalanceV2QuickswapV3Test is Test {
 
         // Note: allowance for collateral1 is already set in setUp()
 
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, pocBuyParamsArray);
+        // Prepare amountsIn array (use entire balance)
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken; // Use entire balance
+
+        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         uint256 profit = launchToken.balanceOf(address(rebalanceV2)) - initialLaunchToken;
         assertGt(profit, 0, "Should have profit");
@@ -471,9 +479,13 @@ contract RebalanceV2QuickswapV3Test is Test {
 
         // Note: allowance for collateral1 is already set in setUp()
 
+        // Prepare amountsIn array (use entire balance)
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = launchToken.balanceOf(address(rebalanceV2)); // Use entire balance
+
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, pocBuyParamsArray);
+        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 }
 
