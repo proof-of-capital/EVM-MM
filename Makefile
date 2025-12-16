@@ -181,21 +181,13 @@ deploy-rebalance-bsc:
 	@echo "Deploying Rebalance to BSC network..."
 
 	forge script ${REBALANCE_SCRIPT} \
-
 		--rpc-url ${BSC_RPC} \
-
 		--private-key ${PRIVATE_KEY} \
-
 		--broadcast \
-
 		--verify \
-
 		--etherscan-api-key ${BSCSCAN_API_KEY} \
-
 		--verifier etherscan \
-
 		--legacy \
-
 		-vvv
 
 deploy-rebalance-mainnet:
@@ -353,25 +345,15 @@ deploy-rebalance-v2-arbitrum:
 deploy-rebalance-v2-bsc:
 
 	forge clean
-
 	@echo "Deploying RebalanceV2 to BSC network..."
-
 	forge script ${REBALANCE_V2_SCRIPT} \
-
 		--rpc-url ${BSC_RPC} \
-
 		--private-key ${PRIVATE_KEY} \
-
 		--broadcast \
-
 		--verify \
-
 		--etherscan-api-key ${BSCSCAN_API_KEY} \
-
 		--verifier etherscan \
-
 		--legacy \
-
 		-vvv
 
 deploy-rebalance-v2-mainnet:
