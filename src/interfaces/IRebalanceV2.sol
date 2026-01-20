@@ -174,6 +174,10 @@ interface IRebalanceV2 {
     /// @return Accumulated profit amount
     function accumulatedProfitDao() external view returns (uint256);
 
+    /// @notice Check if withdraw is unlocked (DAO is dissolved)
+    /// @return true if DAO is dissolved, false otherwise
+    function isWithdrawUnlocked() external view returns (bool);
+
     // ============ State-Changing Functions ============
 
     /// @notice Set withdraw lock for launch token (only owner)
@@ -188,10 +192,6 @@ interface IRebalanceV2 {
     /// @notice Increase allowance for tokens to spenders (only owner)
     /// @param allowances Array of allowance parameters
     function increaseAllowanceForSpenders(AllowanceParams[] calldata allowances) external;
-
-    /// @notice Decrease allowance for tokens from spenders (only owner)
-    /// @param allowances Array of allowance parameters
-    function decreaseAllowanceForSpenders(AllowanceParams[] calldata allowances) external;
 
     /// @notice Withdraw tokens from contract (only owner)
     /// @dev Cannot withdraw launch token if locked

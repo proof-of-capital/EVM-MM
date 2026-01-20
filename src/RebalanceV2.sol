@@ -41,6 +41,8 @@ import "./interfaces/ISwapRouter.sol";
 import "./interfaces/ISwapRouterBase.sol";
 import "./interfaces/IUniswapV2Router01.sol";
 import "./interfaces/IUniswapV2Router02.sol";
+import "./interfaces/IDAO.sol";
+import "./interfaces/DataTypes.sol";
 
 /**
  * @title RebalanceV2 Contract for Proof of Capital
@@ -108,6 +110,46 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
+     * @notice Internal function to check if withdraw is unlocked
+     * @dev Checks if DAO is in Dissolved stage
+     * @return true if DAO is dissolved, false otherwise
+     */
+    function _isWithdrawUnlocked() internal view returns (bool) {
+        // Check if DAO is dissolved
+        try IDAO(profitWalletDao).getDaoState() returns (DataTypes.DAOState memory daoState) {
+            return daoState.currentStage == DataTypes.Stage.Dissolved;
+        } catch {
+            // If DAO call fails, withdrawal remains locked
+            return false;
+        }
+    }
+
+    /**
+     * @notice Check if address is an active POC contract in DAO
+     * @param spender Address to check
+     * @return true if spender is an active POC contract
+     */
+    function _isPOCContract(address spender) internal view returns (bool) {
+        try IDAO(profitWalletDao).pocIndex(spender) returns (uint256 index) {
+            try IDAO(profitWalletDao).getPOCContract(index) returns (DataTypes.POCInfo memory pocInfo) {
+                return pocInfo.active && pocInfo.pocContract == spender;
+            } catch {
+                return false;
+            }
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * @notice Check if withdraw is unlocked (DAO is dissolved)
+     * @return true if DAO is dissolved, false otherwise
+     */
+    function isWithdrawUnlocked() external view override returns (bool) {
+        return _isWithdrawUnlocked();
+    }
+
+    /**
      * @notice Internal function to distribute profit
      * @dev Distribution: 5% MeraFund, 5% POC Royalty, 45% POC Buyback, 45% DAO
      * @param profit Profit amount to distribute
@@ -168,35 +210,30 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
 
     /**
      * @notice Increase allowance for tokens to spenders (only owner)
-     * @dev Cannot increase allowance for launch token if locked
+     * @dev Cannot increase allowance unless: DAO is dissolved OR spender is an active POC contract in DAO
      * @param allowances Array of allowance parameters
      */
     function increaseAllowanceForSpenders(AllowanceParams[] calldata allowances) external override onlyOwner {
-        require(block.timestamp >= withdrawLaunchLockUntil, WithdrawLockNotExpired());
+        bool isUnlocked = _isWithdrawUnlocked();
+
         for (uint256 i = 0; i < allowances.length; i++) {
+            // Allow if DAO is dissolved OR spender is POC contract
+            bool allowed = isUnlocked || _isPOCContract(allowances[i].spender);
+
+            require(allowed, WithdrawLockNotExpired());
             IERC20(allowances[i].token).safeIncreaseAllowance(allowances[i].spender, allowances[i].amount);
         }
     }
 
     /**
-     * @notice Decrease allowance for tokens from spenders (only owner)
-     * @param allowances Array of allowance parameters
-     */
-    function decreaseAllowanceForSpenders(AllowanceParams[] calldata allowances) external override onlyOwner {
-        for (uint256 i = 0; i < allowances.length; i++) {
-            IERC20(allowances[i].token).safeDecreaseAllowance(allowances[i].spender, allowances[i].amount);
-        }
-    }
-
-    /**
      * @notice Withdraw tokens from contract (only owner)
-     * @dev Cannot withdraw launch token if locked
+     * @dev Cannot withdraw launch token if locked (requires DAO to be dissolved)
      * @param token Token address to withdraw
      * @param amount Amount to withdraw
      */
     function withdraw(address token, uint256 amount) external override onlyOwner {
         if (token == address(launchToken)) {
-            require(block.timestamp >= withdrawLaunchLockUntil, WithdrawLaunchLocked());
+            require(_isWithdrawUnlocked(), WithdrawLaunchLocked());
         }
         IERC20(token).safeTransfer(owner(), amount);
     }

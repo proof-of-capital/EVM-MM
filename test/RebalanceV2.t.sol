@@ -15,6 +15,8 @@ import {
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPOC} from "./mocks/MockPOC.sol";
 import {MockUniswapV2Router} from "./mocks/MockUniswapV2Router.sol";
+import {MockDAO} from "./mocks/MockDAO.sol";
+import {DataTypes} from "../src/interfaces/DataTypes.sol";
 
 contract RebalanceV2Test is Test {
     RebalanceV2 public rebalanceV2;
@@ -33,7 +35,7 @@ contract RebalanceV2Test is Test {
     address public profitWalletMeraFund;
     address public profitWalletPocRoyalty;
     address public profitWalletPocBuyback;
-    address public profitWalletDao;
+    MockDAO public mockDao;
 
     function setUp() public {
         owner = address(this);
@@ -42,7 +44,11 @@ contract RebalanceV2Test is Test {
         profitWalletMeraFund = address(0x1);
         profitWalletPocRoyalty = address(0x2);
         profitWalletPocBuyback = address(0x3);
-        profitWalletDao = address(0x4);
+
+        // Deploy MockDAO
+        mockDao = new MockDAO();
+        // Set DAO to Dissolved state by default to allow tests to work
+        mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
 
         // Deploy tokens
         launchToken = new MockERC20("Launch Token", "LAUNCH");
@@ -65,7 +71,7 @@ contract RebalanceV2Test is Test {
             meraFund: profitWalletMeraFund,
             pocRoyalty: profitWalletPocRoyalty,
             pocBuyback: profitWalletPocBuyback,
-            dao: profitWalletDao
+            dao: address(mockDao)
         });
         rebalanceV2 = new RebalanceV2(address(launchToken), profitWallets);
 
@@ -436,7 +442,7 @@ contract RebalanceV2Test is Test {
         uint256 meraFundBalanceBefore = launchToken.balanceOf(profitWalletMeraFund);
         uint256 pocRoyaltyBalanceBefore = launchToken.balanceOf(profitWalletPocRoyalty);
         uint256 pocBuybackBalanceBefore = launchToken.balanceOf(profitWalletPocBuyback);
-        uint256 daoBalanceBefore = launchToken.balanceOf(profitWalletDao);
+        uint256 daoBalanceBefore = launchToken.balanceOf(address(mockDao));
 
         // Withdraw profits
         rebalanceV2.withdrawProfits();
@@ -462,7 +468,7 @@ contract RebalanceV2Test is Test {
             pocBuybackBalanceBefore + expectedPocBuyback,
             "POC Buyback should receive profit"
         );
-        assertEq(launchToken.balanceOf(profitWalletDao), daoBalanceBefore + expectedDao, "DAO should receive profit");
+        assertEq(launchToken.balanceOf(address(mockDao)), daoBalanceBefore + expectedDao, "DAO should receive profit");
 
         // Verify accumulated profits are reset
         assertEq(rebalanceV2.accumulatedProfitMeraFund(), 0, "MeraFund accumulated profit should be reset");
@@ -486,22 +492,18 @@ contract RebalanceV2Test is Test {
         );
     }
 
-    function test_withdraw_LaunchTokenLocked() public {
-        // Set lock
-        rebalanceV2.setWithdrawLaunchLock(block.timestamp + 1000);
+    function test_withdraw_LaunchTokenBeforeDissolution() public {
+        // Set DAO to Active state - withdrawal should be locked
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
 
         // Try to withdraw launch token (should fail)
         vm.expectRevert(IRebalanceV2.WithdrawLaunchLocked.selector);
         rebalanceV2.withdraw(address(launchToken), 1000e18);
     }
 
-    function test_withdraw_LaunchTokenAfterLock() public {
-        // Set lock
-        uint256 lockUntil = block.timestamp + 1000;
-        rebalanceV2.setWithdrawLaunchLock(lockUntil);
-
-        // Fast forward time
-        vm.warp(lockUntil);
+    function test_withdraw_LaunchTokenAfterDissolution() public {
+        // Set DAO to Dissolved state
+        mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
 
         // Mint some launch tokens
         launchToken.mint(address(rebalanceV2), 10000e18);
@@ -509,13 +511,13 @@ contract RebalanceV2Test is Test {
         uint256 ownerBalanceBefore = launchToken.balanceOf(owner);
         uint256 withdrawAmount = 5000e18;
 
-        // Withdraw launch token (should succeed after lock expires)
+        // Withdraw launch token (should succeed after dissolution)
         rebalanceV2.withdraw(address(launchToken), withdrawAmount);
 
         assertEq(
             launchToken.balanceOf(owner),
             ownerBalanceBefore + withdrawAmount,
-            "Owner should receive withdrawn launch tokens"
+            "Owner should receive withdrawn launch tokens after dissolution"
         );
     }
 
@@ -592,40 +594,6 @@ contract RebalanceV2Test is Test {
         rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 
-    function test_decreaseAllowanceForSpenders_Success() public {
-        // Use a new token that doesn't have allowance set in setUp
-        MockERC20 newToken = new MockERC20("New Token", "NEW");
-        MockUniswapV2Router newRouter = new MockUniswapV2Router();
-
-        // First set a specific allowance amount
-        AllowanceParams[] memory setAllowances = new AllowanceParams[](1);
-        setAllowances[0] = AllowanceParams({token: address(newToken), spender: address(newRouter), amount: 1000e18});
-        rebalanceV2.increaseAllowanceForSpenders(setAllowances);
-
-        // Check allowance before
-        uint256 allowanceBefore = newToken.allowance(address(rebalanceV2), address(newRouter));
-        assertEq(allowanceBefore, 1000e18, "Allowance should be set");
-
-        // Decrease allowance
-        AllowanceParams[] memory decreaseAllowances = new AllowanceParams[](1);
-        decreaseAllowances[0] = AllowanceParams({token: address(newToken), spender: address(newRouter), amount: 500e18});
-        rebalanceV2.decreaseAllowanceForSpenders(decreaseAllowances);
-
-        // Check allowance after
-        uint256 allowanceAfter = newToken.allowance(address(rebalanceV2), address(newRouter));
-        assertEq(allowanceAfter, 500e18, "Allowance should be decreased");
-    }
-
-    function test_decreaseAllowanceForSpenders_RevertIfNotOwner() public {
-        address nonOwner = address(0x123);
-        AllowanceParams[] memory allowances = new AllowanceParams[](1);
-        allowances[0] = AllowanceParams({token: address(collateral1), spender: address(router), amount: 1000e18});
-
-        vm.prank(nonOwner);
-        vm.expectRevert();
-        rebalanceV2.decreaseAllowanceForSpenders(allowances);
-    }
-
     function test_increaseAllowanceForSpenders_RevertIfNotOwner() public {
         address nonOwner = address(0x123);
         AllowanceParams[] memory allowances = new AllowanceParams[](1);
@@ -636,12 +604,11 @@ contract RebalanceV2Test is Test {
         rebalanceV2.increaseAllowanceForSpenders(allowances);
     }
 
-    function test_increaseAllowanceForSpenders_RevertIfLockNotExpired() public {
-        // Set lock
-        uint256 lockUntil = block.timestamp + 1000;
-        rebalanceV2.setWithdrawLaunchLock(lockUntil);
+    function test_increaseAllowanceForSpenders_BeforeDissolution() public {
+        // Set DAO to Active state - should be locked
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
 
-        // Try to increase allowance while lock is active (should fail)
+        // Try to increase allowance while DAO is not dissolved (should fail)
         AllowanceParams[] memory allowances = new AllowanceParams[](1);
         allowances[0] = AllowanceParams({token: address(collateral1), spender: address(router), amount: 1000e18});
 
@@ -649,19 +616,15 @@ contract RebalanceV2Test is Test {
         rebalanceV2.increaseAllowanceForSpenders(allowances);
     }
 
-    function test_increaseAllowanceForSpenders_SuccessAfterLockExpires() public {
-        // Set lock
-        uint256 lockUntil = block.timestamp + 1000;
-        rebalanceV2.setWithdrawLaunchLock(lockUntil);
-
-        // Fast forward time to after lock expires
-        vm.warp(lockUntil);
+    function test_increaseAllowanceForSpenders_AfterDissolution() public {
+        // Set DAO to Dissolved state
+        mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
 
         // Use a new token that doesn't have allowance set in setUp
         MockERC20 newToken = new MockERC20("New Token", "NEW");
         MockUniswapV2Router newRouter = new MockUniswapV2Router();
 
-        // Increase allowance after lock expires (should succeed)
+        // Increase allowance after dissolution (should succeed)
         AllowanceParams[] memory allowances = new AllowanceParams[](1);
         allowances[0] = AllowanceParams({token: address(newToken), spender: address(newRouter), amount: 1000e18});
 
@@ -669,7 +632,44 @@ contract RebalanceV2Test is Test {
 
         // Verify allowance was set
         uint256 allowance = newToken.allowance(address(rebalanceV2), address(newRouter));
-        assertEq(allowance, 1000e18, "Allowance should be set after lock expires");
+        assertEq(allowance, 1000e18, "Allowance should be set after dissolution");
+    }
+
+    function test_increaseAllowanceForSpenders_AnyTokenToPOC_BeforeDissolution() public {
+        // Set DAO to Active state
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
+
+        // Create new POC contract that doesn't have allowance set in setUp
+        MockPOC newPoc = new MockPOC(address(launchToken), address(collateral1));
+
+        // Register new POC as POC contract in DAO
+        mockDao.addPOCContract(address(newPoc), address(collateral1));
+
+        // Increase allowance for any token to POC contract (should succeed even before dissolution)
+        AllowanceParams[] memory allowances = new AllowanceParams[](2);
+        allowances[0] = AllowanceParams({token: address(launchToken), spender: address(newPoc), amount: 1000e18});
+        allowances[1] = AllowanceParams({token: address(collateral1), spender: address(newPoc), amount: 2000e18});
+
+        rebalanceV2.increaseAllowanceForSpenders(allowances);
+
+        // Verify allowances were set
+        uint256 launchAllowance = launchToken.allowance(address(rebalanceV2), address(newPoc));
+        uint256 collateralAllowance = collateral1.allowance(address(rebalanceV2), address(newPoc));
+        assertEq(launchAllowance, 1000e18, "Allowance should be set for launch token to POC");
+        assertEq(collateralAllowance, 2000e18, "Allowance should be set for collateral token to POC");
+    }
+
+    function test_increaseAllowanceForSpenders_AnyTokenToNonPOC_BeforeDissolution() public {
+        // Set DAO to Active state
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
+
+        // Try to increase allowance for any token to non-POC address (should fail)
+        AllowanceParams[] memory allowances = new AllowanceParams[](2);
+        allowances[0] = AllowanceParams({token: address(launchToken), spender: address(router), amount: 1000e18});
+        allowances[1] = AllowanceParams({token: address(collateral1), spender: address(router), amount: 2000e18});
+
+        vm.expectRevert(IRebalanceV2.WithdrawLockNotExpired.selector);
+        rebalanceV2.increaseAllowanceForSpenders(allowances);
     }
 
     function test_withdrawProfits_PartialAccumulated() public {
@@ -815,6 +815,51 @@ contract RebalanceV2Test is Test {
         // Should revert with InvalidV3Path error
         vm.expectRevert(IRebalanceV2.InvalidV3Path.selector);
         rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
+    function test_withdraw_LaunchTokenWhenDAOUnavailable() public {
+        // Set DAO to revert (simulating unavailable DAO)
+        mockDao.setShouldRevert(true);
+
+        // Mint some launch tokens
+        launchToken.mint(address(rebalanceV2), 10000e18);
+
+        // Try to withdraw launch token (should fail because DAO is unavailable)
+        vm.expectRevert(IRebalanceV2.WithdrawLaunchLocked.selector);
+        rebalanceV2.withdraw(address(launchToken), 1000e18);
+    }
+
+    function test_isWithdrawUnlocked_ViewFunction() public {
+        // Before dissolution - should be locked
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
+        assertFalse(rebalanceV2.isWithdrawUnlocked(), "Should be locked before dissolution");
+
+        // After dissolution - should be unlocked
+        mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
+        assertTrue(rebalanceV2.isWithdrawUnlocked(), "Should be unlocked after dissolution");
+    }
+
+    function test_setWithdrawLaunchLock_StillWorks() public {
+        // Function setWithdrawLaunchLock should still work, but not affect unlock logic
+        uint256 lockUntil = block.timestamp + 1000;
+        rebalanceV2.setWithdrawLaunchLock(lockUntil);
+        assertEq(rebalanceV2.withdrawLaunchLockUntil(), lockUntil, "Lock timestamp should be set");
+
+        // But lock is not removed even after time expires
+        vm.warp(lockUntil + 1);
+
+        // DAO is still in Dissolved state (from setUp), so withdrawal should work
+        mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
+
+        launchToken.mint(address(rebalanceV2), 10000e18);
+        uint256 ownerBalanceBefore = launchToken.balanceOf(owner);
+        rebalanceV2.withdraw(address(launchToken), 1000e18);
+        assertEq(launchToken.balanceOf(owner), ownerBalanceBefore + 1000e18, "Should withdraw when DAO is dissolved");
+
+        // But if DAO is not dissolved, it should fail
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
+        vm.expectRevert(IRebalanceV2.WithdrawLaunchLocked.selector);
+        rebalanceV2.withdraw(address(launchToken), 1000e18);
     }
 
     function test_rebalancePOCtoPOC_RevertIfNoProfit() public {

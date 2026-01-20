@@ -15,6 +15,8 @@ import {
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPOC} from "./mocks/MockPOC.sol";
 import {MockUniswapV3Router} from "./mocks/MockUniswapV3Router.sol";
+import {MockDAO} from "./mocks/MockDAO.sol";
+import {DataTypes} from "../src/interfaces/DataTypes.sol";
 
 contract RebalanceV2UniswapV3Test is Test {
     RebalanceV2 public rebalanceV2;
@@ -33,7 +35,7 @@ contract RebalanceV2UniswapV3Test is Test {
     address public profitWalletMeraFund;
     address public profitWalletPocRoyalty;
     address public profitWalletPocBuyback;
-    address public profitWalletDao;
+    MockDAO public mockDao;
 
     // Helper function to encode Uniswap V3 path: token0 (20 bytes) + fee (3 bytes) + token1 (20 bytes)
     function encodePath(address token0, uint24 fee, address token1) internal pure returns (bytes memory) {
@@ -47,7 +49,11 @@ contract RebalanceV2UniswapV3Test is Test {
         profitWalletMeraFund = address(0x1);
         profitWalletPocRoyalty = address(0x2);
         profitWalletPocBuyback = address(0x3);
-        profitWalletDao = address(0x4);
+
+        // Deploy MockDAO
+        mockDao = new MockDAO();
+        // Set DAO to Dissolved state by default to allow tests to work
+        mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
 
         // Deploy tokens
         launchToken = new MockERC20("Launch Token", "LAUNCH");
@@ -70,7 +76,7 @@ contract RebalanceV2UniswapV3Test is Test {
             meraFund: profitWalletMeraFund,
             pocRoyalty: profitWalletPocRoyalty,
             pocBuyback: profitWalletPocBuyback,
-            dao: profitWalletDao
+            dao: address(mockDao)
         });
         rebalanceV2 = new RebalanceV2(address(launchToken), profitWallets);
 
@@ -419,7 +425,7 @@ contract RebalanceV2UniswapV3Test is Test {
         uint256 meraFundBalanceBefore = launchToken.balanceOf(profitWalletMeraFund);
         uint256 pocRoyaltyBalanceBefore = launchToken.balanceOf(profitWalletPocRoyalty);
         uint256 pocBuybackBalanceBefore = launchToken.balanceOf(profitWalletPocBuyback);
-        uint256 daoBalanceBefore = launchToken.balanceOf(profitWalletDao);
+        uint256 daoBalanceBefore = launchToken.balanceOf(address(mockDao));
 
         // Withdraw profits
         rebalanceV2.withdrawProfits();
@@ -445,7 +451,7 @@ contract RebalanceV2UniswapV3Test is Test {
             pocBuybackBalanceBefore + expectedPocBuyback,
             "POC Buyback should receive profit"
         );
-        assertEq(launchToken.balanceOf(profitWalletDao), daoBalanceBefore + expectedDao, "DAO should receive profit");
+        assertEq(launchToken.balanceOf(address(mockDao)), daoBalanceBefore + expectedDao, "DAO should receive profit");
 
         // Verify accumulated profits are reset
         assertEq(rebalanceV2.accumulatedProfitMeraFund(), 0, "MeraFund accumulated profit should be reset");
