@@ -117,6 +117,12 @@ interface IRebalanceV2 {
     /// @notice Thrown when launch token is invalid
     error InvalidLaunchToken();
 
+    /// @notice Thrown when minimum profit BPS value is invalid (not between 100 and 500)
+    error InvalidMinProfitBps();
+
+    /// @notice Thrown when profit doesn't reach minimum required percentage
+    error MinProfitNotReached();
+
     // ============ Events ============
 
     /// @notice Emitted when withdraw lock is updated
@@ -131,6 +137,10 @@ interface IRebalanceV2 {
     /// @param wallet Address of the wallet receiving profit
     /// @param amount Amount of profit withdrawn
     event ProfitWithdrawn(address indexed wallet, uint256 amount);
+
+    /// @notice Emitted when minimum profit BPS is updated
+    /// @param newMinProfitBps New minimum profit percentage in basis points
+    event MinProfitBpsUpdated(uint256 newMinProfitBps);
 
     // ============ View Functions ============
 
@@ -178,12 +188,21 @@ interface IRebalanceV2 {
     /// @return true if DAO is dissolved, false otherwise
     function isWithdrawUnlocked() external view returns (bool);
 
+    /// @notice Returns the minimum profit percentage in basis points
+    /// @return Minimum profit percentage in basis points (100 = 1%, 500 = 5%)
+    function minProfitBps() external view returns (uint256);
+
     // ============ State-Changing Functions ============
 
     /// @notice Set withdraw lock for launch token (only owner)
     /// @dev Lock cannot be decreased, only increased
     /// @param lockUntil Timestamp until which withdrawals should be locked
     function setWithdrawLaunchLock(uint256 lockUntil) external;
+
+    /// @notice Set minimum profit percentage in basis points (only owner)
+    /// @dev Value must be between 100 (1%) and 500 (5%) basis points
+    /// @param _minProfitBps Minimum profit percentage in basis points
+    function setMinProfitBps(uint256 _minProfitBps) external;
 
     /// @notice Withdraw accumulated profits to all profit wallets
     /// @dev Transfers profits to all wallets if they have accumulated profits (skips zero amounts)

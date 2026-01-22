@@ -238,8 +238,20 @@ contract RebalanceV2Test is Test {
         });
 
         // Setup swap rate for profit (collateral -> launchToken with profit)
-        router.setSwapRate(address(collateral3), address(launchToken), 11e17); // 1.1:1
-        router.setSwapRate(address(collateral4), address(launchToken), 11e17); // 1.1:1
+        // Need to ensure profit >= 1% of initial balance
+        // Initial: 1e24 (before mint), but initialLaunchBalance in modifier = 1.005e24 (after mint)
+        // Sell: 3000e18 launchToken
+        // Get: 1650e18 collateral3 + 1650e18 collateral4 = 3300e18 each
+        // Each swap uses full balance, so:
+        // Swap 1: 1650e18 collateral3 -> launchToken
+        // Swap 2: 1650e18 collateral4 -> launchToken
+        // Need: profit >= 1.005e24 * 100 / 10000 = 10050e18
+        // Need back: 3000e18 + 10050e18 = 13050e18 total
+        // From 1650e18 each: need 13050e18 / 2 = 6525e18 per swap
+        // Rate: 6525e18 / 1650e18 = 3.954...
+        // Use 4.0:1 to be safe
+        router.setSwapRate(address(collateral3), address(launchToken), 40e17); // 4.0:1
+        router.setSwapRate(address(collateral4), address(launchToken), 40e17); // 4.0:1
 
         // Mint launch tokens to router for swaps
         // After selling: 1.5e21 * 1.1 = 1.65e21 collateral each, total 3.3e21
@@ -364,9 +376,28 @@ contract RebalanceV2Test is Test {
             collateralAmount: 1650e18 // Use 1.65e21 collateral, will get 1.815e21 launchToken
         });
 
-        // Setup swap rates (1:1 for simplicity)
-        router.setSwapRate(address(collateral3), address(collateral1), 1e18);
-        router.setSwapRate(address(collateral4), address(collateral2), 1e18);
+        // Setup swap rates
+        // Need to ensure profit >= 1% of initial balance
+        // Initial: ~1.005e24, sell 3000e18, get 3300e18 collateral each = 6600e18 total
+        // After swap 1:1: get 6600e18 target collateral
+        // Buy: 6600e18 * 1.1 = 7260e18 launchToken
+        // Profit: 7260e18 - 3000e18 = 4260e18
+        // Percentage: 4260e18 / 1.005e24 = 0.424% < 1% (fails!)
+        // Need higher swap rate: use 1.2:1 to get 6600e18 * 1.2 = 7920e18 collateral
+        // Buy: 7920e18 * 1.1 = 8712e18 launchToken
+        // Profit: 8712e18 - 3000e18 = 5712e18
+        // Percentage: 5712e18 / 1.005e24 = 0.568% still < 1%
+        // Use 1.5:1: 6600e18 * 1.5 = 9900e18 collateral
+        // Buy: 9900e18 * 1.1 = 10890e18 launchToken
+        // Profit: 10890e18 - 3000e18 = 7890e18
+        // Percentage: 7890e18 / 1.005e24 = 0.785% still < 1%
+        // Use 2.0:1: 6600e18 * 2.0 = 13200e18 collateral
+        // Buy: 13200e18 * 1.1 = 14520e18 launchToken
+        // Profit: 14520e18 - 3000e18 = 11520e18
+        // Percentage: 11520e18 / 1.005e24 = 1.146% >= 1% (passes!)
+        // Actually, each swap uses full balance separately, so need higher rate
+        router.setSwapRate(address(collateral3), address(collateral1), 36e17); // 3.6:1
+        router.setSwapRate(address(collateral4), address(collateral2), 36e17); // 3.6:1
 
         // Mint collateral tokens to router for swaps
         // After selling: 1.5e21 * 1.1 = 1.65e21 collateral each
@@ -392,8 +423,9 @@ contract RebalanceV2Test is Test {
         // Verify POC interactions
         assertEq(poc3.tokensSoldOnSell(), 1500e18, "POC3 should sell correct amount");
         assertEq(poc4.tokensSoldOnSell(), 1500e18, "POC4 should sell correct amount");
-        assertEq(poc1.tokensReceivedOnBuy(), 1650e18, "POC1 should receive correct amount");
-        assertEq(poc2.tokensReceivedOnBuy(), 1650e18, "POC2 should receive correct amount");
+        // After swap with 3.6:1 rate: 1650e18 * 3.6 = 5940e18 collateral
+        assertEq(poc1.tokensReceivedOnBuy(), 5940e18, "POC1 should receive correct amount");
+        assertEq(poc2.tokensReceivedOnBuy(), 5940e18, "POC2 should receive correct amount");
     }
 
     function test_withdrawProfits_Success() public {
@@ -905,6 +937,219 @@ contract RebalanceV2Test is Test {
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
         rebalanceV2.rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    // ============ Tests for minProfitBps ============
+
+    function test_minProfitBps_DefaultValue() public {
+        // Check default value is 100 bps (1%)
+        assertEq(rebalanceV2.minProfitBps(), 100, "Default minProfitBps should be 100 bps (1%)");
+    }
+
+    function test_setMinProfitBps_Success() public {
+        // Set valid value (200 bps = 2%)
+        rebalanceV2.setMinProfitBps(200);
+        assertEq(rebalanceV2.minProfitBps(), 200, "minProfitBps should be updated to 200 bps");
+
+        // Set minimum value (100 bps = 1%)
+        rebalanceV2.setMinProfitBps(100);
+        assertEq(rebalanceV2.minProfitBps(), 100, "minProfitBps should be updated to 100 bps");
+
+        // Set maximum value (500 bps = 5%)
+        rebalanceV2.setMinProfitBps(500);
+        assertEq(rebalanceV2.minProfitBps(), 500, "minProfitBps should be updated to 500 bps");
+    }
+
+    function test_setMinProfitBps_RevertIfBelowMinimum() public {
+        // Try to set value below 100 bps
+        vm.expectRevert(IRebalanceV2.InvalidMinProfitBps.selector);
+        rebalanceV2.setMinProfitBps(99);
+
+        // Try to set value to 0
+        vm.expectRevert(IRebalanceV2.InvalidMinProfitBps.selector);
+        rebalanceV2.setMinProfitBps(0);
+    }
+
+    function test_setMinProfitBps_RevertIfAboveMaximum() public {
+        // Try to set value above 500 bps
+        vm.expectRevert(IRebalanceV2.InvalidMinProfitBps.selector);
+        rebalanceV2.setMinProfitBps(501);
+
+        // Try to set very large value
+        vm.expectRevert(IRebalanceV2.InvalidMinProfitBps.selector);
+        rebalanceV2.setMinProfitBps(1000);
+    }
+
+    function test_setMinProfitBps_RevertIfNotOwner() public {
+        address nonOwner = address(0x123);
+        vm.prank(nonOwner);
+
+        vm.expectRevert();
+        rebalanceV2.setMinProfitBps(200);
+    }
+
+    function test_rebalanceLPtoPOC_RevertIfProfitBelowMinimum() public {
+        // Set minProfitBps to 300 bps (3%)
+        rebalanceV2.setMinProfitBps(300);
+
+        // Record initial balance
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+
+        // Setup swap that generates profit but less than 3%
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(launchToken);
+        path[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+
+        // Setup swap rate to generate less than 3% profit
+        // Initial: 1e24 launchToken
+        // Required profit: 1e24 * 300 / 10000 = 3e22 (3%)
+        // MockPOC gives 1.1x on buy, so total profit = (swapRate * 1.1 - 1) * initial
+        // We need: (swapRate * 1.1 - 1) < 0.03
+        // swapRate < 1.03 / 1.1 = 0.93636...
+        // Use swapRate = 0.93e18 to get: 0.93 * 1.1 - 1 = 0.023 = 2.3% < 3%
+        router.setSwapRate(address(launchToken), address(collateral1), 93e16); // 0.93:1 = 2.3% total profit
+        collateral1.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] =
+            POCBuyParams({pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24});
+
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken;
+
+        // Should revert because profit is less than 3% minimum
+        vm.expectRevert(IRebalanceV2.MinProfitNotReached.selector);
+        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    function test_rebalancePOCtoLP_RevertIfProfitBelowMinimum() public {
+        // Set minProfitBps to 400 bps (4%)
+        rebalanceV2.setMinProfitBps(400);
+
+        // Mint some launch tokens
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        // Setup POC sell params
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
+
+        // Setup swap params
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path1 = new address[](2);
+        path1[0] = address(collateral3);
+        path1[1] = address(launchToken);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path1,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        // Setup swap rate to generate only 3% profit (less than required 4%)
+        // After sell: 1500e18 launch -> 1650e18 collateral (1.1x from MockPOC)
+        // Required profit: initialLaunchToken * 400 / 10000 = 4% of initial
+        // We need profit >= 4% of initial, but we'll generate only 3%
+        // Initial: ~1e24, required: 4e22, but we'll get only 3e22
+        router.setSwapRate(address(collateral3), address(launchToken), 103e16); // 1.03:1 = 3% profit
+        launchToken.mint(address(router), 5e24);
+
+        // Should revert because profit is less than 4% minimum
+        vm.expectRevert(IRebalanceV2.MinProfitNotReached.selector);
+        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
+    function test_rebalancePOCtoPOC_RevertIfProfitBelowMinimum() public {
+        // Set minProfitBps to 250 bps (2.5%)
+        rebalanceV2.setMinProfitBps(250);
+
+        // Mint some launch tokens
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        // Setup POC sell params
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
+
+        // Setup swap params
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path1 = new address[](2);
+        path1[0] = address(collateral3);
+        path1[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path1,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        // Setup POC buy params
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] =
+            POCBuyParams({pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1650e18});
+
+        // Setup swap rate to generate only 2% profit (less than required 2.5%)
+        router.setSwapRate(address(collateral3), address(collateral1), 102e16); // 1.02:1 = 2% profit
+        collateral1.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+
+        // Should revert because profit is less than 2.5% minimum
+        vm.expectRevert(IRebalanceV2.MinProfitNotReached.selector);
+        rebalanceV2.rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    function test_rebalanceLPtoPOC_SuccessWithCustomMinProfit() public {
+        // Set minProfitBps to 200 bps (2%)
+        rebalanceV2.setMinProfitBps(200);
+
+        // Record initial balances
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+
+        // Setup swap params
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path1 = new address[](2);
+        path1[0] = address(launchToken);
+        path1[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path1,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+
+        // Setup swap rate to generate 3% profit (more than required 2%)
+        router.setSwapRate(address(launchToken), address(collateral1), 103e16); // 1.03:1 = 3% profit
+        collateral1.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] =
+            POCBuyParams({pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24});
+
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken;
+
+        // Execute rebalance - should succeed because profit is >= 2%
+        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+
+        // Verify launch token balance increased
+        uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(finalLaunchToken, initialLaunchToken, "Launch token balance should increase");
+
+        // Verify profit is at least 2% of initial balance
+        uint256 profit = finalLaunchToken - initialLaunchToken;
+        uint256 minRequiredProfit = (initialLaunchToken * 200) / 10000; // 2%
+        assertGe(profit, minRequiredProfit, "Profit should be at least 2% of initial balance");
     }
 }
 

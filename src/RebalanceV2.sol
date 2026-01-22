@@ -74,6 +74,14 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     uint256 private constant PROFIT_SHARE_POC_ROYALTY = 5; // 5%
     uint256 private constant PROFIT_SHARE_POC_BUYBACK = 45; // 45%
 
+    // Minimum profit percentage in basis points (10000 bps = 100%)
+    uint256 private constant BPS_DENOMINATOR = 10000;
+    uint256 private constant MIN_PROFIT_BPS = 100; // 1%
+    uint256 private constant MAX_PROFIT_BPS = 500; // 5%
+
+    // Minimum profit percentage required (in basis points)
+    uint256 public override minProfitBps;
+
     // Modifier to check launch token balance increased
     modifier launchBalanceIncreased() {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
@@ -81,8 +89,14 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         uint256 finalLaunchBalance = launchToken.balanceOf(address(this));
         require(finalLaunchBalance > initialLaunchBalance, LaunchTokenBalanceNotIncreased());
 
-        // Distribute profit
+        // Calculate profit
         uint256 profit = finalLaunchBalance - initialLaunchBalance;
+
+        // Check minimum profit percentage requirement
+        uint256 minRequiredProfit = (initialLaunchBalance * minProfitBps) / BPS_DENOMINATOR;
+        require(profit >= minRequiredProfit, MinProfitNotReached());
+
+        // Distribute profit
         _distributeProfitInternal(profit);
     }
 
@@ -96,6 +110,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         profitWalletPocRoyalty = _profitWallets.pocRoyalty;
         profitWalletPocBuyback = _profitWallets.pocBuyback;
         profitWalletDao = _profitWallets.dao;
+        minProfitBps = MIN_PROFIT_BPS; // Default: 1% (100 bps)
     }
 
     /**
@@ -107,6 +122,17 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         require(lockUntil >= withdrawLaunchLockUntil, LockCannotBeDecreased());
         withdrawLaunchLockUntil = lockUntil;
         emit WithdrawLockUpdated(lockUntil);
+    }
+
+    /**
+     * @notice Set minimum profit percentage in basis points (only owner)
+     * @dev Value must be between MIN_PROFIT_BPS (100) and MAX_PROFIT_BPS (500)
+     * @param _minProfitBps Minimum profit percentage in basis points (100 = 1%, 500 = 5%)
+     */
+    function setMinProfitBps(uint256 _minProfitBps) external override onlyOwner {
+        require(_minProfitBps >= MIN_PROFIT_BPS && _minProfitBps <= MAX_PROFIT_BPS, InvalidMinProfitBps());
+        minProfitBps = _minProfitBps;
+        emit MinProfitBpsUpdated(_minProfitBps);
     }
 
     /**

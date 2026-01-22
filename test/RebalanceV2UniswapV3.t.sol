@@ -233,8 +233,9 @@ contract RebalanceV2UniswapV3Test is Test {
         });
 
         // Setup swap rate for profit (collateral -> launchToken with profit)
-        router.setSwapRate(address(collateral3), address(launchToken), 11e17); // 1.1:1
-        router.setSwapRate(address(collateral4), address(launchToken), 11e17); // 1.1:1
+        // Need to ensure profit >= 1% of initial balance (same calculation as V2 test)
+        router.setSwapRate(address(collateral3), address(launchToken), 40e17); // 4.0:1
+        router.setSwapRate(address(collateral4), address(launchToken), 40e17); // 4.0:1
 
         // Mint launch tokens to router for swaps
         // After selling: 1.5e21 * 1.1 = 1.65e21 collateral each, total 3.3e21
@@ -349,9 +350,10 @@ contract RebalanceV2UniswapV3Test is Test {
             collateralAmount: 1650e18 // Use 1.65e21 collateral, will get 1.815e21 launchToken
         });
 
-        // Setup swap rates (1:1 for simplicity)
-        router.setSwapRate(address(collateral3), address(collateral1), 1e18);
-        router.setSwapRate(address(collateral4), address(collateral2), 1e18);
+        // Setup swap rates
+        // Need to ensure profit >= 1% of initial balance (same calculation as V2 test)
+        router.setSwapRate(address(collateral3), address(collateral1), 36e17); // 3.6:1
+        router.setSwapRate(address(collateral4), address(collateral2), 36e17); // 3.6:1
 
         // Mint collateral tokens to router for swaps
         // After selling: 1.5e21 * 1.1 = 1.65e21 collateral each
@@ -377,8 +379,9 @@ contract RebalanceV2UniswapV3Test is Test {
         // Verify POC interactions
         assertEq(poc3.tokensSoldOnSell(), 1500e18, "POC3 should sell correct amount");
         assertEq(poc4.tokensSoldOnSell(), 1500e18, "POC4 should sell correct amount");
-        assertEq(poc1.tokensReceivedOnBuy(), 1650e18, "POC1 should receive correct amount");
-        assertEq(poc2.tokensReceivedOnBuy(), 1650e18, "POC2 should receive correct amount");
+        // After swap with 3.6:1 rate: 1650e18 * 3.6 = 5940e18 collateral
+        assertEq(poc1.tokensReceivedOnBuy(), 5940e18, "POC1 should receive correct amount");
+        assertEq(poc2.tokensReceivedOnBuy(), 5940e18, "POC2 should receive correct amount");
     }
 
     function test_withdrawProfits_Success() public {
