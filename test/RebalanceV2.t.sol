@@ -1055,12 +1055,10 @@ contract RebalanceV2Test is Test {
             amountOutMinimum: 1350e18
         });
 
-        // Setup swap rate to generate only 3% profit (less than required 4%)
+        // Setup swap rate to generate profit less than required 4% of used launch tokens
         // After sell: 1500e18 launch -> 1650e18 collateral (1.1x from MockPOC)
-        // Required profit: initialLaunchToken * 400 / 10000 = 4% of initial
-        // We need profit >= 4% of initial, but we'll generate only 3%
-        // Initial: ~1e24, required: 4e22, but we'll get only 3e22
-        router.setSwapRate(address(collateral3), address(launchToken), 103e16); // 1.03:1 = 3% profit
+
+        router.setSwapRate(address(collateral3), address(launchToken), 94e16); // 0.94:1 = profit < 4%
         launchToken.mint(address(router), 5e24);
 
         // Should revert because profit is less than 4% minimum
@@ -1097,8 +1095,8 @@ contract RebalanceV2Test is Test {
         pocBuyParamsArray[0] =
             POCBuyParams({pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1650e18});
 
-        // Setup swap rate to generate only 2% profit (less than required 2.5%)
-        router.setSwapRate(address(collateral3), address(collateral1), 102e16); // 1.02:1 = 2% profit
+
+        router.setSwapRate(address(collateral3), address(collateral1), 84e16); // 0.84:1 = profit < 2.5%
         collateral1.mint(address(router), 2e24);
         launchToken.mint(address(poc1), 2e24);
 

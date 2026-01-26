@@ -82,18 +82,21 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     // Minimum profit percentage required (in basis points)
     uint256 public override minProfitBps;
 
-    // Modifier to check launch token balance increased
-    modifier launchBalanceIncreased() {
-        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
-        _;
+    /**
+     * @notice Internal function to check profit and distribute it
+     * @dev Checks that launch token balance increased and profit meets minimum requirement based on used launch tokens
+     * @param initialLaunchBalance Initial launch token balance before operation
+     * @param usedLaunchTokens Amount of launch tokens used in the operation
+     */
+    function _checkProfitAndDistribute(uint256 initialLaunchBalance, uint256 usedLaunchTokens) internal {
         uint256 finalLaunchBalance = launchToken.balanceOf(address(this));
         require(finalLaunchBalance > initialLaunchBalance, LaunchTokenBalanceNotIncreased());
 
         // Calculate profit
         uint256 profit = finalLaunchBalance - initialLaunchBalance;
 
-        // Check minimum profit percentage requirement
-        uint256 minRequiredProfit = (initialLaunchBalance * minProfitBps) / BPS_DENOMINATOR;
+        // Check minimum profit percentage requirement based on used launch tokens
+        uint256 minRequiredProfit = (usedLaunchTokens * minProfitBps) / BPS_DENOMINATOR;
         require(profit >= minRequiredProfit, MinProfitNotReached());
 
         // Distribute profit
@@ -278,8 +281,13 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         SwapParams[] calldata swapParamsArray,
         uint256[] calldata amountsIn,
         POCBuyParams[] calldata pocBuyParamsArray
-    ) external override launchBalanceIncreased {
+    ) external override {
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+        
+        // Calculate sum of all used launch tokens
+        uint256 sumOfAmountsIn = 0;
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
+            sumOfAmountsIn += amountsIn[i];
             address collateralToken = _getTokenOut(swapParamsArray[i]);
             require(collateralToken == pocBuyParamsArray[i].collateral, InvalidCollateralToken());
             _swap(amountsIn[i], swapParamsArray[i]);
@@ -290,6 +298,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             IProofOfCapital(pocParams.pocContract)
                 .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
         }
+
+        _checkProfitAndDistribute(initialLaunchBalance, sumOfAmountsIn);
     }
 
     /**
@@ -304,9 +314,12 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     function rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
         external
         override
-        launchBalanceIncreased
     {
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+        
+        uint256 sumOfLaunchAmounts = 0;
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
+            sumOfLaunchAmounts += pocSellParamsArray[i].launchAmount;
             POCSellParams calldata pocParams = pocSellParamsArray[i];
             IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount);
         }
@@ -324,6 +337,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
 
             _swap(collateralBalance, swapParams);
         }
+
+        _checkProfitAndDistribute(initialLaunchBalance, sumOfLaunchAmounts);
     }
 
     /**
@@ -341,8 +356,12 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         POCSellParams[] calldata pocSellParamsArray,
         SwapParams[] calldata swapParamsArray,
         POCBuyParams[] calldata pocBuyParamsArray
-    ) external override launchBalanceIncreased {
+    ) external override {
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+        
+        uint256 sumOfLaunchAmounts = 0;
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
+            sumOfLaunchAmounts += pocSellParamsArray[i].launchAmount;
             POCSellParams calldata pocParams = pocSellParamsArray[i];
             IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount);
         }
@@ -366,6 +385,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             IProofOfCapital(pocParams.pocContract)
                 .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
         }
+
+        _checkProfitAndDistribute(initialLaunchBalance, sumOfLaunchAmounts);
     }
 
     /**
