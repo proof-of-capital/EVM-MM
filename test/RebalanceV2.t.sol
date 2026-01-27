@@ -1095,7 +1095,6 @@ contract RebalanceV2Test is Test {
         pocBuyParamsArray[0] =
             POCBuyParams({pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1650e18});
 
-
         router.setSwapRate(address(collateral3), address(collateral1), 84e16); // 0.84:1 = profit < 2.5%
         collateral1.mint(address(router), 2e24);
         launchToken.mint(address(poc1), 2e24);

@@ -123,6 +123,15 @@ interface IRebalanceV2 {
     /// @notice Thrown when profit doesn't reach minimum required percentage
     error MinProfitNotReached();
 
+    /// @notice Thrown when trying to change MeraFund wallet from unauthorized address
+    error OnlyMeraFundWalletCanChange();
+
+    /// @notice Thrown when trying to change Royalty wallet from unauthorized address
+    error OnlyRoyaltyWalletCanChange();
+
+    /// @notice Thrown when trying to change Return wallet from unauthorized address
+    error OnlyReturnWalletCanChange();
+
     // ============ Events ============
 
     /// @notice Emitted when withdraw lock is updated
@@ -141,6 +150,21 @@ interface IRebalanceV2 {
     /// @notice Emitted when minimum profit BPS is updated
     /// @param newMinProfitBps New minimum profit percentage in basis points
     event MinProfitBpsUpdated(uint256 newMinProfitBps);
+
+    /// @notice Emitted when MeraFund wallet is changed
+    /// @param oldWallet Previous MeraFund wallet address
+    /// @param newWallet New MeraFund wallet address
+    event MeraFundWalletChanged(address indexed oldWallet, address indexed newWallet);
+
+    /// @notice Emitted when Royalty wallet is changed
+    /// @param oldWallet Previous Royalty wallet address
+    /// @param newWallet New Royalty wallet address
+    event RoyaltyWalletChanged(address indexed oldWallet, address indexed newWallet);
+
+    /// @notice Emitted when Return wallet is changed
+    /// @param oldWallet Previous Return wallet address
+    /// @param newWallet New Return wallet address
+    event ReturnWalletChanged(address indexed oldWallet, address indexed newWallet);
 
     // ============ View Functions ============
 
@@ -203,6 +227,21 @@ interface IRebalanceV2 {
     /// @dev Value must be between 100 (1%) and 500 (5%) basis points
     /// @param _minProfitBps Minimum profit percentage in basis points
     function setMinProfitBps(uint256 _minProfitBps) external;
+
+    /// @notice Change MeraFund wallet address (only current MeraFund wallet can call)
+    /// @dev Transfers accumulated profit to new wallet if any exists
+    /// @param newWallet New MeraFund wallet address
+    function changeMeraFundWallet(address newWallet) external;
+
+    /// @notice Change Royalty wallet address (only current Royalty wallet can call)
+    /// @dev Transfers accumulated profit to new wallet if any exists
+    /// @param newWallet New Royalty wallet address
+    function changeRoyaltyWallet(address newWallet) external;
+
+    /// @notice Change Return wallet address (only current Return wallet can call)
+    /// @dev Transfers accumulated profit to new wallet if any exists
+    /// @param newWallet New Return wallet address
+    function changeReturnWallet(address newWallet) external;
 
     /// @notice Withdraw accumulated profits to all profit wallets
     /// @dev Transfers profits to all wallets if they have accumulated profits (skips zero amounts)

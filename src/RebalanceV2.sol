@@ -56,10 +56,10 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     // Withdraw lock timestamp for launch token
     uint256 public override withdrawLaunchLockUntil;
 
-    // Profit distribution wallets (immutable)
-    address public immutable override profitWalletMeraFund;
-    address public immutable override profitWalletPocRoyalty;
-    address public immutable override profitWalletPocBuyback;
+    // Profit distribution wallets (MeraFund, Royalty, and Buyback can be changed by their owners)
+    address public override profitWalletMeraFund;
+    address public override profitWalletPocRoyalty;
+    address public override profitWalletPocBuyback;
     address public immutable override profitWalletDao;
 
     // Accumulated profits per wallet
@@ -136,6 +136,78 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         require(_minProfitBps >= MIN_PROFIT_BPS && _minProfitBps <= MAX_PROFIT_BPS, InvalidMinProfitBps());
         minProfitBps = _minProfitBps;
         emit MinProfitBpsUpdated(_minProfitBps);
+    }
+
+    /**
+     * @notice Change MeraFund wallet address (only current MeraFund wallet can call)
+     * @dev Transfers accumulated profit to new wallet if any exists
+     * @param newWallet New MeraFund wallet address
+     */
+    function changeMeraFundWallet(address newWallet) external override {
+        require(msg.sender == profitWalletMeraFund, OnlyMeraFundWalletCanChange());
+        require(newWallet != address(0), InvalidProfitWalletAddress());
+
+        address oldWallet = profitWalletMeraFund;
+        uint256 accumulatedProfit = accumulatedProfitMeraFund;
+
+        // Transfer accumulated profit to new wallet if any exists
+        if (accumulatedProfit > 0) {
+            accumulatedProfitMeraFund = 0;
+            launchToken.safeTransfer(newWallet, accumulatedProfit);
+            emit ProfitWithdrawn(newWallet, accumulatedProfit);
+        }
+
+        // Update wallet address
+        profitWalletMeraFund = newWallet;
+        emit MeraFundWalletChanged(oldWallet, newWallet);
+    }
+
+    /**
+     * @notice Change Royalty wallet address (only current Royalty wallet can call)
+     * @dev Transfers accumulated profit to new wallet if any exists
+     * @param newWallet New Royalty wallet address
+     */
+    function changeRoyaltyWallet(address newWallet) external override {
+        require(msg.sender == profitWalletPocRoyalty, OnlyRoyaltyWalletCanChange());
+        require(newWallet != address(0), InvalidProfitWalletAddress());
+
+        address oldWallet = profitWalletPocRoyalty;
+        uint256 accumulatedProfit = accumulatedProfitPocRoyalty;
+
+        // Transfer accumulated profit to new wallet if any exists
+        if (accumulatedProfit > 0) {
+            accumulatedProfitPocRoyalty = 0;
+            launchToken.safeTransfer(newWallet, accumulatedProfit);
+            emit ProfitWithdrawn(newWallet, accumulatedProfit);
+        }
+
+        // Update wallet address
+        profitWalletPocRoyalty = newWallet;
+        emit RoyaltyWalletChanged(oldWallet, newWallet);
+    }
+
+    /**
+     * @notice Change Return wallet address (only current Return wallet can call)
+     * @dev Transfers accumulated profit to new wallet if any exists
+     * @param newWallet New Return wallet address
+     */
+    function changeReturnWallet(address newWallet) external override {
+        require(msg.sender == profitWalletPocBuyback, OnlyReturnWalletCanChange());
+        require(newWallet != address(0), InvalidProfitWalletAddress());
+
+        address oldWallet = profitWalletPocBuyback;
+        uint256 accumulatedProfit = accumulatedProfitPocBuyback;
+
+        // Transfer accumulated profit to new wallet if any exists
+        if (accumulatedProfit > 0) {
+            accumulatedProfitPocBuyback = 0;
+            launchToken.safeTransfer(newWallet, accumulatedProfit);
+            emit ProfitWithdrawn(newWallet, accumulatedProfit);
+        }
+
+        // Update wallet address
+        profitWalletPocBuyback = newWallet;
+        emit ReturnWalletChanged(oldWallet, newWallet);
     }
 
     /**
@@ -283,7 +355,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         POCBuyParams[] calldata pocBuyParamsArray
     ) external override {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
-        
+
         // Calculate sum of all used launch tokens
         uint256 sumOfAmountsIn = 0;
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
@@ -316,7 +388,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         override
     {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
-        
+
         uint256 sumOfLaunchAmounts = 0;
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
             sumOfLaunchAmounts += pocSellParamsArray[i].launchAmount;
@@ -358,7 +430,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         POCBuyParams[] calldata pocBuyParamsArray
     ) external override {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
-        
+
         uint256 sumOfLaunchAmounts = 0;
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
             sumOfLaunchAmounts += pocSellParamsArray[i].launchAmount;
