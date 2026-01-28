@@ -82,6 +82,39 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     // Minimum profit percentage required (in basis points)
     uint256 public override minProfitBps;
 
+    // Admin role (can be set by DAO)
+    address public admin;
+
+    // Action publishing system
+    mapping(bytes32 => uint256) public publishedActions; // action hash => publication timestamp
+    mapping(bytes32 => bool) public executedActions; // action hash => executed flag
+
+    // Time constants for action publishing
+    uint256 private constant DELAY = 60; // 1 minute delay before execution
+    uint256 private constant WINDOW = 600; // 10 minutes execution window
+
+    // Modifiers
+    modifier onlyAdmin() {
+        require(msg.sender == admin, OnlyAdmin());
+        _;
+    }
+
+    modifier onlyDao() {
+        require(msg.sender == profitWalletDao, OnlyDao());
+        _;
+    }
+
+    /**
+     * @notice Set admin address (only DAO can call)
+     * @param newAdmin New admin address
+     */
+    function setAdmin(address newAdmin) external onlyDao {
+        require(newAdmin != address(0), InvalidProfitWalletAddress());
+        address oldAdmin = admin;
+        admin = newAdmin;
+        emit AdminSet(oldAdmin, newAdmin);
+    }
+
     /**
      * @notice Internal function to check profit and distribute it
      * @dev Checks that launch token balance increased and profit meets minimum requirement based on used launch tokens
@@ -340,7 +373,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
-     * @notice LP to POC rebalancing
+     * @notice LP to POC rebalancing (internal)
      * @dev Algorithm:
      *      1. Swap launch -> collateral(s) on DEX (multiple swaps)
      *      2. Buy launch from POC contract(s) using collateral(s)
@@ -349,11 +382,11 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
      * @param pocBuyParamsArray Array of POC buy parameters
      */
-    function rebalanceLPtoPOC(
+    function _rebalanceLPtoPOC(
         SwapParams[] calldata swapParamsArray,
         uint256[] calldata amountsIn,
         POCBuyParams[] calldata pocBuyParamsArray
-    ) external override {
+    ) internal {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
 
         // Calculate sum of all used launch tokens
@@ -375,7 +408,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
-     * @notice POC to LP rebalancing
+     * @notice POC to LP rebalancing (internal)
      * @dev Algorithm:
      *      1. Sell launch to POC contract for collateral
      *      2. Buy launch for all received collateral in LP pool
@@ -383,9 +416,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param pocSellParamsArray Array of POC sell parameters
      * @param swapParamsArray Array of swap parameters for DEX swaps
      */
-    function rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
-        external
-        override
+    function _rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
+        internal
     {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
 
@@ -414,7 +446,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
-     * @notice POC to LP to POC rebalancing
+     * @notice POC to LP to POC rebalancing (internal)
      * @dev Algorithm:
      *      1. Sell launch to POC contract for collateral
      *      2. Swap all received collateral to another collateral via specified path
@@ -424,11 +456,11 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param swapParamsArray Array of swap parameters for DEX swaps
      * @param pocBuyParamsArray Array of POC buy parameters
      */
-    function rebalancePOCtoPOC(
+    function _rebalancePOCtoPOC(
         POCSellParams[] calldata pocSellParamsArray,
         SwapParams[] calldata swapParamsArray,
         POCBuyParams[] calldata pocBuyParamsArray
-    ) external override {
+    ) internal {
         uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
 
         uint256 sumOfLaunchAmounts = 0;
@@ -459,6 +491,203 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         }
 
         _checkProfitAndDistribute(initialLaunchBalance, sumOfLaunchAmounts);
+    }
+
+    /**
+     * @notice Admin LP to POC rebalancing (no delays)
+     * @dev Admin can execute rebalancing without any delays
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     * @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
+     * @param pocBuyParamsArray Array of POC buy parameters
+     */
+    function adminRebalanceLPtoPOC(
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external onlyAdmin {
+        _rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    /**
+     * @notice Admin POC to LP rebalancing (no delays)
+     * @dev Admin can execute rebalancing without any delays
+     * @param pocSellParamsArray Array of POC sell parameters
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     */
+    function adminRebalancePOCtoLP(
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray
+    ) external onlyAdmin {
+        _rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
+    /**
+     * @notice Admin POC to LP to POC rebalancing (no delays)
+     * @dev Admin can execute rebalancing without any delays
+     * @param pocSellParamsArray Array of POC sell parameters
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     * @param pocBuyParamsArray Array of POC buy parameters
+     */
+    function adminRebalancePOCtoPOC(
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external onlyAdmin {
+        _rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    /**
+     * @notice LP to POC rebalancing (public wrapper for backward compatibility)
+     * @dev Algorithm:
+     *      1. Swap launch -> collateral(s) on DEX (multiple swaps)
+     *      2. Buy launch from POC contract(s) using collateral(s)
+     *      3. Check that launch balance increased (profit)
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     * @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
+     * @param pocBuyParamsArray Array of POC buy parameters
+     */
+    function rebalanceLPtoPOC(
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external override {
+        _rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    /**
+     * @notice POC to LP rebalancing (public wrapper for backward compatibility)
+     * @dev Algorithm:
+     *      1. Sell launch to POC contract for collateral
+     *      2. Buy launch for all received collateral in LP pool
+     *      3. Check that in profit (launch balance increased)
+     * @param pocSellParamsArray Array of POC sell parameters
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     */
+    function rebalancePOCtoLP(
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray
+    ) external override {
+        _rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
+    /**
+     * @notice POC to LP to POC rebalancing (public wrapper for backward compatibility)
+     * @dev Algorithm:
+     *      1. Sell launch to POC contract for collateral
+     *      2. Swap all received collateral to another collateral via specified path
+     *      3. Buy launch from another POC contract using new collateral
+     *      4. Check that in profit (launch balance increased)
+     * @param pocSellParamsArray Array of POC sell parameters
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     * @param pocBuyParamsArray Array of POC buy parameters
+     */
+    function rebalancePOCtoPOC(
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external override {
+        _rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    /**
+     * @notice Publish action for delayed execution
+     * @dev Users can publish their action calldata which will be executable after DELAY
+     * @param actionData Future calldata with function selector and all parameters (including nonce if needed)
+     */
+    function publishAction(bytes calldata actionData) external {
+        bytes32 actionHash = _calculateActionHash(msg.sender, actionData);
+        require(publishedActions[actionHash] == 0, "Action already published");
+        
+        publishedActions[actionHash] = block.timestamp;
+        emit ActionPublished(msg.sender, actionHash, block.timestamp);
+    }
+
+    /**
+     * @notice Execute published LP to POC rebalancing action
+     * @dev Executes published action after delay and within execution window
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     * @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
+     * @param pocBuyParamsArray Array of POC buy parameters
+     */
+    function executePublishedRebalanceLPtoPOC(
+        uint256 /* nonce - not used in logic, only for hash calculation */,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external {
+        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
+        _validateActionTiming(actionHash);
+        
+        executedActions[actionHash] = true;
+        emit ActionExecuted(msg.sender, actionHash);
+        
+        _rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    /**
+     * @notice Execute published POC to LP rebalancing action
+     * @dev Executes published action after delay and within execution window
+     * @param pocSellParamsArray Array of POC sell parameters
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     */
+    function executePublishedRebalancePOCtoLP(
+        uint256 /* nonce - not used in logic, only for hash calculation */,
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray
+    ) external {
+        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
+        _validateActionTiming(actionHash);
+        
+        executedActions[actionHash] = true;
+        emit ActionExecuted(msg.sender, actionHash);
+        
+        _rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
+    /**
+     * @notice Execute published POC to LP to POC rebalancing action
+     * @dev Executes published action after delay and within execution window
+     * @param pocSellParamsArray Array of POC sell parameters
+     * @param swapParamsArray Array of swap parameters for DEX swaps
+     * @param pocBuyParamsArray Array of POC buy parameters
+     */
+    function executePublishedRebalancePOCtoPOC(
+        uint256 /* nonce - not used in logic, only for hash calculation */,
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external {
+        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
+        _validateActionTiming(actionHash);
+        
+        executedActions[actionHash] = true;
+        emit ActionExecuted(msg.sender, actionHash);
+        
+        _rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    /**
+     * @notice Calculate action hash from user address and action data
+     * @param user User address
+     * @param actionData Action calldata
+     * @return Action hash
+     */
+    function _calculateActionHash(address user, bytes calldata actionData) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(user, actionData));
+    }
+
+    /**
+     * @notice Validate action timing (delay and window)
+     * @param actionHash Action hash
+     */
+    function _validateActionTiming(bytes32 actionHash) internal view {
+        uint256 publishedAt = publishedActions[actionHash];
+        require(publishedAt != 0, ActionNotPublished());
+        require(!executedActions[actionHash], ActionAlreadyExecuted());
+        
+        uint256 elapsed = block.timestamp - publishedAt;
+        require(elapsed >= DELAY, ActionTooEarly());
+        require(elapsed <= DELAY + WINDOW, ActionExpired());
     }
 
     /**

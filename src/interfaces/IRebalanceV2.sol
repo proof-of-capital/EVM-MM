@@ -132,6 +132,24 @@ interface IRebalanceV2 {
     /// @notice Thrown when trying to change Return wallet from unauthorized address
     error OnlyReturnWalletCanChange();
 
+    /// @notice Thrown when caller is not DAO
+    error OnlyDao();
+
+    /// @notice Thrown when caller is not admin
+    error OnlyAdmin();
+
+    /// @notice Thrown when action is not published
+    error ActionNotPublished();
+
+    /// @notice Thrown when trying to execute action too early (before delay)
+    error ActionTooEarly();
+
+    /// @notice Thrown when action execution window has expired
+    error ActionExpired();
+
+    /// @notice Thrown when action has already been executed
+    error ActionAlreadyExecuted();
+
     // ============ Events ============
 
     /// @notice Emitted when withdraw lock is updated
@@ -165,6 +183,22 @@ interface IRebalanceV2 {
     /// @param oldWallet Previous Return wallet address
     /// @param newWallet New Return wallet address
     event ReturnWalletChanged(address indexed oldWallet, address indexed newWallet);
+
+    /// @notice Emitted when admin is set
+    /// @param oldAdmin Previous admin address
+    /// @param newAdmin New admin address
+    event AdminSet(address indexed oldAdmin, address indexed newAdmin);
+
+    /// @notice Emitted when action is published
+    /// @param user User who published the action
+    /// @param actionHash Hash of the published action
+    /// @param timestamp Publication timestamp
+    event ActionPublished(address indexed user, bytes32 indexed actionHash, uint256 timestamp);
+
+    /// @notice Emitted when action is executed
+    /// @param user User who executed the action
+    /// @param actionHash Hash of the executed action
+    event ActionExecuted(address indexed user, bytes32 indexed actionHash);
 
     // ============ View Functions ============
 
@@ -215,6 +249,20 @@ interface IRebalanceV2 {
     /// @notice Returns the minimum profit percentage in basis points
     /// @return Minimum profit percentage in basis points (100 = 1%, 500 = 5%)
     function minProfitBps() external view returns (uint256);
+
+    /// @notice Returns the admin address
+    /// @return Admin address
+    function admin() external view returns (address);
+
+    /// @notice Returns the publication timestamp for an action hash
+    /// @param actionHash Action hash
+    /// @return Publication timestamp (0 if not published)
+    function publishedActions(bytes32 actionHash) external view returns (uint256);
+
+    /// @notice Returns whether an action has been executed
+    /// @param actionHash Action hash
+    /// @return true if executed, false otherwise
+    function executedActions(bytes32 actionHash) external view returns (bool);
 
     // ============ State-Changing Functions ============
 
@@ -291,6 +339,83 @@ interface IRebalanceV2 {
     /// @param swapParamsArray Array of swap parameters for DEX swaps
     /// @param pocBuyParamsArray Array of POC buy parameters
     function rebalancePOCtoPOC(
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external;
+
+    /// @notice Set admin address (only DAO can call)
+    /// @param newAdmin New admin address
+    function setAdmin(address newAdmin) external;
+
+    /// @notice Admin LP to POC rebalancing (no delays)
+    /// @dev Admin can execute rebalancing without any delays
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    /// @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
+    /// @param pocBuyParamsArray Array of POC buy parameters
+    function adminRebalanceLPtoPOC(
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external;
+
+    /// @notice Admin POC to LP rebalancing (no delays)
+    /// @dev Admin can execute rebalancing without any delays
+    /// @param pocSellParamsArray Array of POC sell parameters
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    function adminRebalancePOCtoLP(
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray
+    ) external;
+
+    /// @notice Admin POC to LP to POC rebalancing (no delays)
+    /// @dev Admin can execute rebalancing without any delays
+    /// @param pocSellParamsArray Array of POC sell parameters
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    /// @param pocBuyParamsArray Array of POC buy parameters
+    function adminRebalancePOCtoPOC(
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external;
+
+    /// @notice Publish action for delayed execution
+    /// @dev Users can publish their action calldata which will be executable after DELAY
+    /// @param actionData Future calldata with function selector and all parameters (including nonce if needed)
+    function publishAction(bytes calldata actionData) external;
+
+    /// @notice Execute published LP to POC rebalancing action
+    /// @dev Executes published action after delay and within execution window
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    /// @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
+    /// @param pocBuyParamsArray Array of POC buy parameters
+    function executePublishedRebalanceLPtoPOC(
+        uint256 nonce,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external;
+
+    /// @notice Execute published POC to LP rebalancing action
+    /// @dev Executes published action after delay and within execution window
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param pocSellParamsArray Array of POC sell parameters
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    function executePublishedRebalancePOCtoLP(
+        uint256 nonce,
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray
+    ) external;
+
+    /// @notice Execute published POC to LP to POC rebalancing action
+    /// @dev Executes published action after delay and within execution window
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param pocSellParamsArray Array of POC sell parameters
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    /// @param pocBuyParamsArray Array of POC buy parameters
+    function executePublishedRebalancePOCtoPOC(
+        uint256 nonce,
         POCSellParams[] calldata pocSellParamsArray,
         SwapParams[] calldata swapParamsArray,
         POCBuyParams[] calldata pocBuyParamsArray
