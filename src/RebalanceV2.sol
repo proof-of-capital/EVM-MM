@@ -60,7 +60,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     address public override profitWalletMeraFund;
     address public override profitWalletPocRoyalty;
     address public override profitWalletPocBuyback;
-    address public immutable override profitWalletDao;
+    address public override profitWalletDao;
 
     // Accumulated profits per wallet
     uint256 public override accumulatedProfitMeraFund;
@@ -108,7 +108,6 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         require(_profitWallets.meraFund != address(0), InvalidProfitWalletAddress());
         require(_profitWallets.pocRoyalty != address(0), InvalidProfitWalletAddress());
         require(_profitWallets.pocBuyback != address(0), InvalidProfitWalletAddress());
-        require(_profitWallets.dao != address(0), InvalidProfitWalletAddress());
         profitWalletMeraFund = _profitWallets.meraFund;
         profitWalletPocRoyalty = _profitWallets.pocRoyalty;
         profitWalletPocBuyback = _profitWallets.pocBuyback;
@@ -136,6 +135,18 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         require(_minProfitBps >= MIN_PROFIT_BPS && _minProfitBps <= MAX_PROFIT_BPS, InvalidMinProfitBps());
         minProfitBps = _minProfitBps;
         emit MinProfitBpsUpdated(_minProfitBps);
+    }
+
+    /**
+     * @notice Set DAO profit wallet address (only owner, only when current DAO is zero)
+     * @dev Can be called only once when profitWalletDao is address(0)
+     * @param _dao New DAO wallet address (must be non-zero)
+     */
+    function setProfitWalletDao(address _dao) external override onlyOwner {
+        require(profitWalletDao == address(0), DaoAlreadySet());
+        require(_dao != address(0), InvalidProfitWalletAddress());
+        profitWalletDao = _dao;
+        emit DaoWalletSet(_dao);
     }
 
     /**
@@ -216,6 +227,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @return true if DAO is dissolved, false otherwise
      */
     function _isWithdrawUnlocked() internal view returns (bool) {
+        // No DAO means no lock (withdrawal unlocked)
+        if (profitWalletDao == address(0)) return true;
         // Check if DAO is dissolved
         try IDAO(profitWalletDao).getDaoState() returns (DataTypes.DAOState memory daoState) {
             return daoState.currentStage == DataTypes.Stage.Dissolved;
@@ -231,6 +244,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @return true if spender is an active POC contract
      */
     function _isPOCContract(address spender) internal view returns (bool) {
+        if (profitWalletDao == address(0)) return false;
         try IDAO(profitWalletDao).pocIndex(spender) returns (uint256 index) {
             try IDAO(profitWalletDao).getPOCContract(index) returns (DataTypes.POCInfo memory pocInfo) {
                 return pocInfo.active && pocInfo.pocContract == spender;
@@ -300,8 +314,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
             emit ProfitWithdrawn(profitWalletPocBuyback, amount);
         }
 
-        // Withdraw DAO profit
-        if (accumulatedProfitDao > 0) {
+        // Withdraw DAO profit (only when DAO is set)
+        if (profitWalletDao != address(0) && accumulatedProfitDao > 0) {
             uint256 amount = accumulatedProfitDao;
             accumulatedProfitDao = 0;
             launchToken.safeTransfer(profitWalletDao, amount);

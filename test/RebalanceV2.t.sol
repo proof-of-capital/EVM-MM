@@ -785,16 +785,16 @@ contract RebalanceV2Test is Test {
         new RebalanceV2(address(launchToken), profitWallets);
     }
 
-    function test_constructor_RevertIfInvalidProfitWallet_Dao() public {
+    function test_constructor_AcceptsZeroDao() public {
         ProfitWallets memory profitWallets = ProfitWallets({
             meraFund: address(0x1),
             pocRoyalty: address(0x2),
             pocBuyback: address(0x3),
-            dao: address(0) // Invalid
+            dao: address(0) // Optional: zero is allowed
         });
 
-        vm.expectRevert(IRebalanceV2.InvalidProfitWalletAddress.selector);
-        new RebalanceV2(address(launchToken), profitWallets);
+        RebalanceV2 rebalance = new RebalanceV2(address(launchToken), profitWallets);
+        assertEq(rebalance.profitWalletDao(), address(0));
     }
 
     function test_rebalancePOCtoLP_RevertIfInvalidPath_V2() public {
