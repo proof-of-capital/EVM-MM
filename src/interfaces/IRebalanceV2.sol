@@ -149,6 +149,8 @@ interface IRebalanceV2 {
 
     /// @notice Thrown when action has already been executed
     error ActionAlreadyExecuted();
+    /// @notice Thrown when trying to set DAO wallet but it is already set
+    error DaoAlreadySet();
 
     // ============ Events ============
 
@@ -199,6 +201,9 @@ interface IRebalanceV2 {
     /// @param user User who executed the action
     /// @param actionHash Hash of the executed action
     event ActionExecuted(address indexed user, bytes32 indexed actionHash);
+    /// @notice Emitted when DAO wallet is set (only when current DAO is zero)
+    /// @param dao Address of the DAO wallet
+    event DaoWalletSet(address indexed dao);
 
     // ============ View Functions ============
 
@@ -275,6 +280,11 @@ interface IRebalanceV2 {
     /// @dev Value must be between 100 (1%) and 500 (5%) basis points
     /// @param _minProfitBps Minimum profit percentage in basis points
     function setMinProfitBps(uint256 _minProfitBps) external;
+
+    /// @notice Set DAO profit wallet address (only owner, only when current DAO is zero)
+    /// @dev Can be called only once when profitWalletDao is address(0)
+    /// @param _dao New DAO wallet address (must be non-zero)
+    function setProfitWalletDao(address _dao) external;
 
     /// @notice Change MeraFund wallet address (only current MeraFund wallet can call)
     /// @dev Transfers accumulated profit to new wallet if any exists
