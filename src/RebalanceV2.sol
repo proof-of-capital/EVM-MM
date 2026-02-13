@@ -415,7 +415,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
             IProofOfCapital(pocParams.pocContract)
-                .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
+                .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)), 0);
         }
 
         _checkProfitAndDistribute(initialLaunchBalance, sumOfAmountsIn);
@@ -439,7 +439,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
             sumOfLaunchAmounts += pocSellParamsArray[i].launchAmount;
             POCSellParams calldata pocParams = pocSellParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount);
+            uint256 minOut = (i == 0) ? pocSellParamsArray[0].minCollateralOut : 0;
+            IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount, minOut);
         }
 
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
@@ -481,7 +482,8 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
             sumOfLaunchAmounts += pocSellParamsArray[i].launchAmount;
             POCSellParams calldata pocParams = pocSellParamsArray[i];
-            IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount);
+            uint256 minCollateral = (i == 0) ? pocSellParamsArray[0].minCollateralOut : 0;
+            IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount, minCollateral);
         }
 
         for (uint256 i = 0; i < swapParamsArray.length; i++) {
@@ -501,7 +503,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
             POCBuyParams calldata pocParams = pocBuyParamsArray[i];
             IProofOfCapital(pocParams.pocContract)
-                .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)));
+                .buyLaunchTokens(IERC20(pocParams.collateral).balanceOf(address(this)), 0);
         }
 
         _checkProfitAndDistribute(initialLaunchBalance, sumOfLaunchAmounts);
@@ -528,10 +530,10 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param pocSellParamsArray Array of POC sell parameters
      * @param swapParamsArray Array of swap parameters for DEX swaps
      */
-    function adminRebalancePOCtoLP(
-        POCSellParams[] calldata pocSellParamsArray,
-        SwapParams[] calldata swapParamsArray
-    ) external onlyAdmin {
+    function adminRebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
+        external
+        onlyAdmin
+    {
         _rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
@@ -577,10 +579,10 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param pocSellParamsArray Array of POC sell parameters
      * @param swapParamsArray Array of swap parameters for DEX swaps
      */
-    function rebalancePOCtoLP(
-        POCSellParams[] calldata pocSellParamsArray,
-        SwapParams[] calldata swapParamsArray
-    ) external override {
+    function rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
+        external
+        override
+    {
         _rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
@@ -611,7 +613,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     function publishAction(bytes calldata actionData) external {
         bytes32 actionHash = _calculateActionHash(msg.sender, actionData);
         require(publishedActions[actionHash] == 0, "Action already published");
-        
+
         publishedActions[actionHash] = block.timestamp;
         emit ActionPublished(msg.sender, actionHash, block.timestamp);
     }
@@ -624,17 +626,18 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param pocBuyParamsArray Array of POC buy parameters
      */
     function executePublishedRebalanceLPtoPOC(
-        uint256 /* nonce - not used in logic, only for hash calculation */,
+        uint256,
+        /* nonce - not used in logic, only for hash calculation */
         SwapParams[] calldata swapParamsArray,
         uint256[] calldata amountsIn,
         POCBuyParams[] calldata pocBuyParamsArray
     ) external {
         bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
         _validateActionTiming(actionHash);
-        
+
         executedActions[actionHash] = true;
         emit ActionExecuted(msg.sender, actionHash);
-        
+
         _rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 
@@ -645,16 +648,17 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param swapParamsArray Array of swap parameters for DEX swaps
      */
     function executePublishedRebalancePOCtoLP(
-        uint256 /* nonce - not used in logic, only for hash calculation */,
+        uint256,
+        /* nonce - not used in logic, only for hash calculation */
         POCSellParams[] calldata pocSellParamsArray,
         SwapParams[] calldata swapParamsArray
     ) external {
         bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
         _validateActionTiming(actionHash);
-        
+
         executedActions[actionHash] = true;
         emit ActionExecuted(msg.sender, actionHash);
-        
+
         _rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
@@ -666,17 +670,18 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      * @param pocBuyParamsArray Array of POC buy parameters
      */
     function executePublishedRebalancePOCtoPOC(
-        uint256 /* nonce - not used in logic, only for hash calculation */,
+        uint256,
+        /* nonce - not used in logic, only for hash calculation */
         POCSellParams[] calldata pocSellParamsArray,
         SwapParams[] calldata swapParamsArray,
         POCBuyParams[] calldata pocBuyParamsArray
     ) external {
         bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
         _validateActionTiming(actionHash);
-        
+
         executedActions[actionHash] = true;
         emit ActionExecuted(msg.sender, actionHash);
-        
+
         _rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
     }
 
@@ -698,7 +703,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         uint256 publishedAt = publishedActions[actionHash];
         require(publishedAt != 0, ActionNotPublished());
         require(!executedActions[actionHash], ActionAlreadyExecuted());
-        
+
         uint256 elapsed = block.timestamp - publishedAt;
         require(elapsed >= DELAY, ActionTooEarly());
         require(elapsed <= DELAY + WINDOW, ActionExpired());

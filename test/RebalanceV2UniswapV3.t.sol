@@ -151,7 +151,8 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1e24 // Use all collateral received from swap
+            collateralAmount: 1e24, // Use all collateral received from swap
+            minLaunchTokensOut: 0
         });
 
         // Setup swap rate to return more collateral (1.1:1)
@@ -206,8 +207,8 @@ contract RebalanceV2UniswapV3Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
-        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18, minCollateralOut: 0});
 
         // Prepare swap params (collateral -> launchToken)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -266,7 +267,8 @@ contract RebalanceV2UniswapV3Test is Test {
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
         pocSellParamsArray[0] = POCSellParams({
             pocContract: address(poc3),
-            launchAmount: 3000e18 // Sell large amount
+            launchAmount: 3000e18, // Sell large amount
+            minCollateralOut: 0
         });
 
         // Prepare swap params (collateral -> launchToken)
@@ -303,8 +305,8 @@ contract RebalanceV2UniswapV3Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
-        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18, minCollateralOut: 0});
 
         // Prepare swap params (collateral -> collateral)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -342,12 +344,14 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1650e18 // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            collateralAmount: 1650e18, // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            minLaunchTokensOut: 0
         });
         pocBuyParamsArray[1] = POCBuyParams({
             pocContract: address(poc2),
             collateral: address(collateral2),
-            collateralAmount: 1650e18 // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            collateralAmount: 1650e18, // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            minLaunchTokensOut: 0
         });
 
         // Setup swap rates
@@ -403,7 +407,8 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1e24 // Use all collateral received from swap
+            collateralAmount: 1e24, // Use all collateral received from swap
+            minLaunchTokensOut: 0
         });
 
         // Setup swap rate to return more collateral (1.1:1)
@@ -485,7 +490,8 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1e24 // Not used, code uses balanceOf
+            collateralAmount: 1e24, // Not used, code uses balanceOf
+            minLaunchTokensOut: 0
         });
         collateral1.mint(address(router), 2e24); // Mint enough collateral
         // Mint launch tokens to POC contract for buy operations

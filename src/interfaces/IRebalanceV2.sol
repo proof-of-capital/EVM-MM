@@ -37,21 +37,25 @@ struct SwapParams {
  * @param pocContract Address of the POC contract
  * @param collateral Collateral token address to use for purchase
  * @param collateralAmount Amount of collateral tokens to spend
+ * @param minLaunchTokensOut Minimum launch tokens to receive (0 = no check); used only for first action in scenario
  */
 struct POCBuyParams {
     address pocContract;
     address collateral;
     uint256 collateralAmount;
+    uint256 minLaunchTokensOut;
 }
 
 /**
  * @notice Parameters for selling tokens to POC contract
  * @param pocContract Address of the POC contract
  * @param launchAmount Amount of launch tokens to sell
+ * @param minCollateralOut Minimum collateral to receive (0 = no check); used only for first action in scenario
  */
 struct POCSellParams {
     address pocContract;
     uint256 launchAmount;
+    uint256 minCollateralOut;
 }
 
 /**
@@ -373,10 +377,8 @@ interface IRebalanceV2 {
     /// @dev Admin can execute rebalancing without any delays
     /// @param pocSellParamsArray Array of POC sell parameters
     /// @param swapParamsArray Array of swap parameters for DEX swaps
-    function adminRebalancePOCtoLP(
-        POCSellParams[] calldata pocSellParamsArray,
-        SwapParams[] calldata swapParamsArray
-    ) external;
+    function adminRebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
+        external;
 
     /// @notice Admin POC to LP to POC rebalancing (no delays)
     /// @dev Admin can execute rebalancing without any delays

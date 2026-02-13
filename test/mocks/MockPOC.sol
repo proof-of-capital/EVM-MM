@@ -17,7 +17,12 @@ contract MockPOC is IProofOfCapital {
         _collateralToken = IERC20(collateralToken_);
     }
 
-    function buyLaunchTokens(uint256 amount) external {
+    function buyLaunchTokens(
+        uint256 amount,
+        uint256 /* minLaunchTokensOut */
+    )
+        external
+    {
         caller = msg.sender;
         tokensReceivedOnBuy = amount;
         // Simulate: transfer collateral from caller
@@ -28,7 +33,12 @@ contract MockPOC is IProofOfCapital {
         _launchToken.transfer(msg.sender, launchAmount);
     }
 
-    function sellLaunchTokens(uint256 amount) public {
+    function sellLaunchTokens(
+        uint256 amount,
+        uint256 /* minCollateralOut */
+    )
+        public
+    {
         caller = msg.sender;
         tokensSoldOnSell = amount;
         // Simulate: transfer launch tokens from caller and send collateral to caller
@@ -40,7 +50,15 @@ contract MockPOC is IProofOfCapital {
     }
 
     function sellLaunchTokensReturnWallet(uint256 amount) external {
-        sellLaunchTokens(amount);
+        sellLaunchTokens(amount, 0);
+    }
+
+    function sellLaunchTokensDao(uint256) external pure {
+        revert("Not implemented");
+    }
+
+    function upgradeOwnerShare() external pure {
+        revert("Not implemented");
     }
 
     // Stub implementations for interface compliance
@@ -156,6 +174,10 @@ contract MockPOC is IProofOfCapital {
         return 0;
     }
 
+    function isCollateralTokenOracleValid() external pure returns (bool) {
+        return true;
+    }
+
     function isActive() external pure returns (bool) {
         return true;
     }
@@ -196,11 +218,11 @@ contract MockPOC is IProofOfCapital {
         return 0;
     }
 
-    function initialPricePerToken() external pure returns (uint256) {
+    function initialPricePerLaunchToken() external pure returns (uint256) {
         return 0;
     }
 
-    function firstLevelTokenQuantity() external pure returns (uint256) {
+    function firstLevelLaunchTokenQuantity() external pure returns (uint256) {
         return 0;
     }
 
@@ -244,7 +266,7 @@ contract MockPOC is IProofOfCapital {
         return 0;
     }
 
-    function creatorProfitPercent() external pure returns (uint256) {
+    function ownerEarnedLaunchTokens() external pure returns (uint256) {
         return 0;
     }
 
@@ -370,6 +392,14 @@ contract MockPOC is IProofOfCapital {
 
     function isFirstLaunchDeposit() external pure returns (bool) {
         return false;
+    }
+
+    function collateralTokenOracle() external pure returns (address) {
+        return address(0);
+    }
+
+    function collateralTokenMinOracleValue() external pure returns (int256) {
+        return 0;
     }
 }
 

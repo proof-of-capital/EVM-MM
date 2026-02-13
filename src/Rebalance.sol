@@ -61,6 +61,8 @@ struct RebalanceParams {
     address collateral;
     uint256 amount;
     SwapParams swapParams;
+    uint256 minLaunchTokensOut;
+    uint256 minCollateralOut;
 }
 
 struct AllowanceParams {
@@ -176,8 +178,9 @@ contract Rebalance is Ownable {
             } else {
                 fallenCollateralAmount = swap(params.amount, params.swapParams);
             }
-            // Step 2: fallen collateral -> launchToken via POC (buy)
-            IProofOfCapital(params.pocContract).buyLaunchTokens(fallenCollateralAmount);
+            // Step 2: fallen collateral -> launchToken via POC (buy); min only for first action
+            uint256 minOut = (i == 0) ? params.minLaunchTokensOut : 0;
+            IProofOfCapital(params.pocContract).buyLaunchTokens(fallenCollateralAmount, minOut);
         }
 
         // Calculate total launch tokens bought
@@ -195,7 +198,7 @@ contract Rebalance is Ownable {
             }
 
             // Step 3: launchToken -> risen collateral via POC (sell)
-            IProofOfCapital(params.pocContract).sellLaunchTokens(launchTokensToSell);
+            IProofOfCapital(params.pocContract).sellLaunchTokens(launchTokensToSell, 0);
             totalLaunchTokensSold += launchTokensToSell;
 
             // Step 4: risen collateral -> mainCollateralToken via DEX
@@ -231,8 +234,9 @@ contract Rebalance is Ownable {
                 fallenCollateralAmount = swap(params.amount, params.swapParams);
             }
 
-            // Step 2: fallen collateral -> launchToken via POC
-            IProofOfCapital(params.pocContract).buyLaunchTokens(fallenCollateralAmount);
+            // Step 2: fallen collateral -> launchToken via POC; min only for first action
+            uint256 minOut = (i == 0) ? params.minLaunchTokensOut : 0;
+            IProofOfCapital(params.pocContract).buyLaunchTokens(fallenCollateralAmount, minOut);
         }
 
         // Step 3: launchToken -> mainCollateralToken via DEX (only newly bought tokens)

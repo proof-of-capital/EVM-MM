@@ -130,7 +130,9 @@ contract RebalanceUniswapV3Test is Test {
                 path: new address[](0), // Not used for V3
                 data: path1,
                 amountOutMinimum: 900e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Fallen param 2: mainCollateral -> fallenCollateral2 -> launchToken via fallenPOC2
@@ -145,7 +147,9 @@ contract RebalanceUniswapV3Test is Test {
                 path: new address[](0), // Not used for V3
                 data: path2,
                 amountOutMinimum: 1800e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Prepare risen params (sell launch tokens)
@@ -163,7 +167,9 @@ contract RebalanceUniswapV3Test is Test {
                 path: new address[](0), // Not used for V3
                 data: path3,
                 amountOutMinimum: 1350e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Risen param 2: launchToken -> risenCollateral2 via risenPOC2 -> mainCollateral
@@ -178,7 +184,9 @@ contract RebalanceUniswapV3Test is Test {
                 path: new address[](0), // Not used for V3
                 data: path4,
                 amountOutMinimum: 1350e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Calculate expected launch tokens bought
@@ -230,7 +238,9 @@ contract RebalanceUniswapV3Test is Test {
                 path: new address[](0), // Not used for V3
                 data: path1,
                 amountOutMinimum: 900e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Rebalance param 2: mainCollateral -> fallenCollateral2 -> launchToken via fallenPOC2
@@ -245,7 +255,9 @@ contract RebalanceUniswapV3Test is Test {
                 path: new address[](0), // Not used for V3
                 data: path2,
                 amountOutMinimum: 1800e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Setup swap rate for final swap (launchToken -> mainCollateralToken)

@@ -126,7 +126,9 @@ contract RebalanceTest is Test {
                 path: path1,
                 data: "",
                 amountOutMinimum: 900e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Fallen param 2: mainCollateral -> fallenCollateral2 -> launchToken via fallenPOC2
@@ -143,7 +145,9 @@ contract RebalanceTest is Test {
                 path: path2,
                 data: "",
                 amountOutMinimum: 1800e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Prepare risen params (sell launch tokens)
@@ -163,7 +167,9 @@ contract RebalanceTest is Test {
                 path: path3,
                 data: "",
                 amountOutMinimum: 1350e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Risen param 2: launchToken -> risenCollateral2 via risenPOC2 -> mainCollateral
@@ -180,7 +186,9 @@ contract RebalanceTest is Test {
                 path: path4,
                 data: "",
                 amountOutMinimum: 1350e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Calculate expected launch tokens bought
@@ -234,7 +242,9 @@ contract RebalanceTest is Test {
                 path: path1,
                 data: "",
                 amountOutMinimum: 900e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Rebalance param 2: mainCollateral -> fallenCollateral2 -> launchToken via fallenPOC2
@@ -251,7 +261,9 @@ contract RebalanceTest is Test {
                 path: path2,
                 data: "",
                 amountOutMinimum: 1800e18
-            })
+            }),
+            minLaunchTokensOut: 0,
+            minCollateralOut: 0
         });
 
         // Setup swap rate for final swap (launchToken -> mainCollateralToken)
