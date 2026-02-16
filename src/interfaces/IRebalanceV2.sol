@@ -341,45 +341,6 @@ interface IRebalanceV2 {
     /// @param amount Amount to withdraw
     function withdraw(address token, uint256 amount) external;
 
-    /// @notice LP to POC rebalancing
-    /// @dev Algorithm:
-    ///      1. Swap launch -> collateral(s) on DEX (multiple swaps)
-    ///      2. Buy launch from POC contract(s) using collateral(s)
-    ///      3. Check that launch balance increased (profit)
-    /// @param swapParamsArray Array of swap parameters for DEX swaps
-    /// @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
-    /// @param pocBuyParamsArray Array of POC buy parameters
-    function rebalanceLPtoPOC(
-        SwapParams[] calldata swapParamsArray,
-        uint256[] calldata amountsIn,
-        POCBuyParams[] calldata pocBuyParamsArray
-    ) external;
-
-    /// @notice POC to LP rebalancing
-    /// @dev Algorithm:
-    ///      1. Sell launch to POC contract for collateral
-    ///      2. Buy launch for all received collateral in LP pool
-    ///      3. Check that in profit (launch balance increased)
-    /// @param pocSellParamsArray Array of POC sell parameters
-    /// @param swapParamsArray Array of swap parameters for DEX swaps
-    function rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
-        external;
-
-    /// @notice POC to LP to POC rebalancing
-    /// @dev Algorithm:
-    ///      1. Sell launch to POC contract for collateral
-    ///      2. Swap all received collateral to another collateral via specified path
-    ///      3. Buy launch from another POC contract using new collateral
-    ///      4. Check that in profit (launch balance increased)
-    /// @param pocSellParamsArray Array of POC sell parameters
-    /// @param swapParamsArray Array of swap parameters for DEX swaps
-    /// @param pocBuyParamsArray Array of POC buy parameters
-    function rebalancePOCtoPOC(
-        POCSellParams[] calldata pocSellParamsArray,
-        SwapParams[] calldata swapParamsArray,
-        POCBuyParams[] calldata pocBuyParamsArray
-    ) external;
-
     /// @notice Set admin address (only DAO can call)
     /// @param newAdmin New admin address
     function setAdmin(address newAdmin) external;

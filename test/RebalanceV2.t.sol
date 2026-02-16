@@ -120,13 +120,17 @@ contract RebalanceV2Test is Test {
         allowances[8] =
             AllowanceParams({token: address(launchToken), spender: address(poc4), amount: type(uint256).max});
         rebalanceV2.increaseAllowanceForSpenders(allowances);
+
+        // Set test contract as admin so tests can call adminRebalance* (rebalance only via admin or publish/execute)
+        vm.prank(address(mockDao));
+        rebalanceV2.setAdmin(owner);
     }
 
     function test_rebalanceLPtoPOC_Success() public {
         // Record initial balances
         uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
 
-        // Note: rebalanceLPtoPOC uses entire launchToken balance for each swap
+        // Note: adminRebalanceLPtoPOC uses entire launchToken balance for each swap
         // So we use single swap for simplicity
         SwapParams[] memory swapParamsArray = new SwapParams[](1);
 
@@ -174,7 +178,7 @@ contract RebalanceV2Test is Test {
         amountsIn[0] = initialLaunchToken; // Use entire balance
 
         // Execute rebalance
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         // Check final balances
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
@@ -262,7 +266,7 @@ contract RebalanceV2Test is Test {
         // Note: allowances for collateral3 and collateral4 are already set in setUp()
 
         // Execute rebalance
-        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
 
         // Check final balances
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
@@ -315,7 +319,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
-        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
     function test_rebalancePOCtoPOC_Success() public {
@@ -416,7 +420,7 @@ contract RebalanceV2Test is Test {
         // Note: allowances for collateral3 and collateral4 are already set in setUp()
 
         // Execute rebalance
-        rebalanceV2.rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+        rebalanceV2.adminRebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
 
         // Check final balances
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
@@ -470,7 +474,7 @@ contract RebalanceV2Test is Test {
         uint256[] memory amountsIn = new uint256[](1);
         amountsIn[0] = initialLaunchToken; // Use entire balance
 
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         uint256 profit = launchToken.balanceOf(address(rebalanceV2)) - initialLaunchToken;
         assertGt(profit, 0, "Should have profit");
@@ -629,7 +633,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 
     function test_increaseAllowanceForSpenders_RevertIfNotOwner() public {
@@ -738,7 +742,7 @@ contract RebalanceV2Test is Test {
         uint256[] memory amountsIn = new uint256[](1);
         amountsIn[0] = launchToken.balanceOf(address(rebalanceV2)); // Use entire balance
 
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         // Manually set some accumulated profits to 0 to test partial withdrawal
         // This simulates a scenario where some profits were already withdrawn
@@ -827,7 +831,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert with InvalidPath error
         vm.expectRevert(IRebalanceV2.InvalidPath.selector);
-        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
     function test_rebalancePOCtoLP_RevertIfInvalidPath_V3() public {
@@ -853,7 +857,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert with InvalidV3Path error
         vm.expectRevert(IRebalanceV2.InvalidV3Path.selector);
-        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
     function test_withdraw_LaunchTokenWhenDAOUnavailable() public {
@@ -945,7 +949,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
-        rebalanceV2.rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+        rebalanceV2.adminRebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
     }
 
     // ============ Tests for minProfitBps ============
@@ -1038,7 +1042,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert because profit is less than 3% minimum
         vm.expectRevert(IRebalanceV2.MinProfitNotReached.selector);
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 
     function test_rebalancePOCtoLP_RevertIfProfitBelowMinimum() public {
@@ -1073,7 +1077,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert because profit is less than 4% minimum
         vm.expectRevert(IRebalanceV2.MinProfitNotReached.selector);
-        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
     function test_rebalancePOCtoPOC_RevertIfProfitBelowMinimum() public {
@@ -1115,7 +1119,7 @@ contract RebalanceV2Test is Test {
 
         // Should revert because profit is less than 2.5% minimum
         vm.expectRevert(IRebalanceV2.MinProfitNotReached.selector);
-        rebalanceV2.rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+        rebalanceV2.adminRebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
     }
 
     function test_rebalanceLPtoPOC_SuccessWithCustomMinProfit() public {
@@ -1152,7 +1156,7 @@ contract RebalanceV2Test is Test {
         amountsIn[0] = initialLaunchToken;
 
         // Execute rebalance - should succeed because profit is >= 2%
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         // Verify launch token balance increased
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
