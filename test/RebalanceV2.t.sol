@@ -40,6 +40,11 @@ contract RebalanceV2Test is Test {
     address public profitWalletPocBuyback;
     MockDAO public mockDao;
 
+    // Publish/execute delay and window (must match RebalanceV2 constants)
+    uint256 internal constant DELAY = 60;
+    uint256 internal constant WINDOW = 600;
+    address public executor;
+
     function setUp() public {
         owner = address(this);
 
@@ -127,6 +132,8 @@ contract RebalanceV2Test is Test {
         // Set test contract as admin so tests can call adminRebalance* (rebalance only via admin or publish/execute)
         vm.prank(address(mockDao));
         rebalanceV2.setAdmin(owner);
+
+        executor = address(0xE1);
     }
 
     // Encode path for SwapRouterBase/UniswapV3-style exactInput: token0 (20 bytes) + fee (3 bytes) + token1 (20 bytes)
@@ -1751,6 +1758,529 @@ contract RebalanceV2Test is Test {
         uint256 profit = finalLaunchToken - initialLaunchToken;
         uint256 minRequiredProfit = (initialLaunchToken * 200) / 10000; // 2%
         assertGe(profit, minRequiredProfit, "Profit should be at least 2% of initial balance");
+    }
+
+    // ============ publishAction tests ============
+
+    function test_publishAction_Success() public {
+        bytes memory actionData = abi.encode(uint256(123));
+        bytes32 actionHash = keccak256(abi.encodePacked(executor, actionData));
+
+        vm.expectEmit(true, true, true, true);
+        emit IRebalanceV2.ActionPublished(executor, actionHash, block.timestamp);
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+
+        assertEq(rebalanceV2.publishedActions(actionHash), block.timestamp, "publishedActions should store timestamp");
+    }
+
+    function test_publishAction_RevertIfAlreadyPublished() public {
+        bytes memory actionData = abi.encode(uint256(456));
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionAlreadyPublished.selector);
+        rebalanceV2.publishAction(actionData);
+    }
+
+    // ============ executePublishedRebalanceLPtoPOC tests ============
+
+    function _setupLPtoPOCForPublishExecute() internal returns (
+        SwapParams[] memory swapParamsArray,
+        uint256[] memory amountsIn,
+        POCBuyParams[] memory pocBuyParamsArray
+    ) {
+        router.setSwapRate(address(launchToken), address(collateral1), 11e17); // 1.1:1
+        collateral1.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        swapParamsArray = new SwapParams[](1);
+        address[] memory path1 = new address[](2);
+        path1[0] = address(launchToken);
+        path1[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path1,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+        pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+        amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken;
+    }
+
+    function test_executePublishedRebalanceLPtoPOC_Success() public {
+        (SwapParams[] memory swapParamsArray, uint256[] memory amountsIn, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupLPtoPOCForPublishExecute();
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        uint256 nonce = 0;
+
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceLPtoPOC.selector, nonce, swapParamsArray, amountsIn, pocBuyParamsArray
+        );
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+
+        vm.warp(block.timestamp + DELAY);
+
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalanceLPtoPOC(nonce, swapParamsArray, amountsIn, pocBuyParamsArray);
+
+        uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(finalLaunchToken, initialLaunchToken, "Launch token balance should increase");
+    }
+
+    function test_executePublishedRebalanceLPtoPOC_RevertIfNotPublished() public {
+        (SwapParams[] memory swapParamsArray, uint256[] memory amountsIn, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupLPtoPOCForPublishExecute();
+        uint256 nonce = 0;
+
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionNotPublished.selector);
+        rebalanceV2.executePublishedRebalanceLPtoPOC(nonce, swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    function test_executePublishedRebalanceLPtoPOC_RevertIfTooEarly() public {
+        (SwapParams[] memory swapParamsArray, uint256[] memory amountsIn, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupLPtoPOCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceLPtoPOC.selector, nonce, swapParamsArray, amountsIn, pocBuyParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY - 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionTooEarly.selector);
+        rebalanceV2.executePublishedRebalanceLPtoPOC(nonce, swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    function test_executePublishedRebalanceLPtoPOC_RevertIfExpired() public {
+        (SwapParams[] memory swapParamsArray, uint256[] memory amountsIn, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupLPtoPOCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceLPtoPOC.selector, nonce, swapParamsArray, amountsIn, pocBuyParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY + WINDOW + 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionExpired.selector);
+        rebalanceV2.executePublishedRebalanceLPtoPOC(nonce, swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    function test_executePublishedRebalanceLPtoPOC_RevertIfAlreadyExecuted() public {
+        (SwapParams[] memory swapParamsArray, uint256[] memory amountsIn, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupLPtoPOCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceLPtoPOC.selector, nonce, swapParamsArray, amountsIn, pocBuyParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalanceLPtoPOC(nonce, swapParamsArray, amountsIn, pocBuyParamsArray);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionAlreadyExecuted.selector);
+        rebalanceV2.executePublishedRebalanceLPtoPOC(nonce, swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    // ============ executePublishedRebalancePOCtoLP tests ============
+
+    function _setupPOCtoLPForPublishExecute() internal returns (
+        POCSellParams[] memory pocSellParamsArray,
+        SwapParams[] memory swapParamsArray
+    ) {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+        pocSellParamsArray = new POCSellParams[](2);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18, minCollateralOut: 0});
+
+        swapParamsArray = new SwapParams[](2);
+        address[] memory path1 = new address[](2);
+        path1[0] = address(collateral3);
+        path1[1] = address(launchToken);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path1,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+        address[] memory path2 = new address[](2);
+        path2[0] = address(collateral4);
+        path2[1] = address(launchToken);
+        swapParamsArray[1] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path2,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+        router.setSwapRate(address(collateral3), address(launchToken), 40e17); // 4.0:1
+        router.setSwapRate(address(collateral4), address(launchToken), 40e17); // 4.0:1
+        launchToken.mint(address(router), 5e24);
+    }
+
+    function test_executePublishedRebalancePOCtoLP_Success() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray) =
+            _setupPOCtoLPForPublishExecute();
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        uint256 nonce = 0;
+
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoLP.selector, nonce, pocSellParamsArray, swapParamsArray
+        );
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+
+        vm.warp(block.timestamp + DELAY);
+
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalancePOCtoLP(nonce, pocSellParamsArray, swapParamsArray);
+
+        uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(finalLaunchToken, initialLaunchToken, "Launch token balance should increase");
+    }
+
+    function test_executePublishedRebalancePOCtoLP_RevertIfNotPublished() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray) =
+            _setupPOCtoLPForPublishExecute();
+        uint256 nonce = 0;
+
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionNotPublished.selector);
+        rebalanceV2.executePublishedRebalancePOCtoLP(nonce, pocSellParamsArray, swapParamsArray);
+    }
+
+    function test_executePublishedRebalancePOCtoLP_RevertIfTooEarly() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray) =
+            _setupPOCtoLPForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoLP.selector, nonce, pocSellParamsArray, swapParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY - 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionTooEarly.selector);
+        rebalanceV2.executePublishedRebalancePOCtoLP(nonce, pocSellParamsArray, swapParamsArray);
+    }
+
+    function test_executePublishedRebalancePOCtoLP_RevertIfExpired() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray) =
+            _setupPOCtoLPForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoLP.selector, nonce, pocSellParamsArray, swapParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY + WINDOW + 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionExpired.selector);
+        rebalanceV2.executePublishedRebalancePOCtoLP(nonce, pocSellParamsArray, swapParamsArray);
+    }
+
+    function test_executePublishedRebalancePOCtoLP_RevertIfAlreadyExecuted() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray) =
+            _setupPOCtoLPForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoLP.selector, nonce, pocSellParamsArray, swapParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalancePOCtoLP(nonce, pocSellParamsArray, swapParamsArray);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionAlreadyExecuted.selector);
+        rebalanceV2.executePublishedRebalancePOCtoLP(nonce, pocSellParamsArray, swapParamsArray);
+    }
+
+    // ============ executePublishedRebalancePOCtoPOC tests ============
+
+    function _setupPOCtoPOCForPublishExecute() internal returns (
+        POCSellParams[] memory pocSellParamsArray,
+        SwapParams[] memory swapParamsArray,
+        POCBuyParams[] memory pocBuyParamsArray
+    ) {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+        pocSellParamsArray = new POCSellParams[](2);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18, minCollateralOut: 0});
+
+        swapParamsArray = new SwapParams[](2);
+        address[] memory path1 = new address[](2);
+        path1[0] = address(collateral3);
+        path1[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path1,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+        address[] memory path2 = new address[](2);
+        path2[0] = address(collateral4);
+        path2[1] = address(collateral2);
+        swapParamsArray[1] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path2,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        pocBuyParamsArray = new POCBuyParams[](2);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1650e18,
+            minLaunchTokensOut: 0
+        });
+        pocBuyParamsArray[1] = POCBuyParams({
+            pocContract: address(poc2),
+            collateral: address(collateral2),
+            collateralAmount: 1650e18,
+            minLaunchTokensOut: 0
+        });
+
+        router.setSwapRate(address(collateral3), address(collateral1), 36e17); // 3.6:1
+        router.setSwapRate(address(collateral4), address(collateral2), 36e17); // 3.6:1
+        collateral1.mint(address(router), 2e24);
+        collateral2.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+        launchToken.mint(address(poc2), 2e24);
+    }
+
+    function test_executePublishedRebalancePOCtoPOC_Success() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupPOCtoPOCForPublishExecute();
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        uint256 nonce = 0;
+
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoPOC.selector,
+            nonce,
+            pocSellParamsArray,
+            swapParamsArray,
+            pocBuyParamsArray
+        );
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+
+        vm.warp(block.timestamp + DELAY);
+
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalancePOCtoPOC(nonce, pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+
+        uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(finalLaunchToken, initialLaunchToken, "Launch token balance should increase");
+    }
+
+    function test_executePublishedRebalancePOCtoPOC_RevertIfNotPublished() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupPOCtoPOCForPublishExecute();
+        uint256 nonce = 0;
+
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionNotPublished.selector);
+        rebalanceV2.executePublishedRebalancePOCtoPOC(nonce, pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    function test_executePublishedRebalancePOCtoPOC_RevertIfTooEarly() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupPOCtoPOCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoPOC.selector,
+            nonce,
+            pocSellParamsArray,
+            swapParamsArray,
+            pocBuyParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY - 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionTooEarly.selector);
+        rebalanceV2.executePublishedRebalancePOCtoPOC(nonce, pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    function test_executePublishedRebalancePOCtoPOC_RevertIfExpired() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupPOCtoPOCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoPOC.selector,
+            nonce,
+            pocSellParamsArray,
+            swapParamsArray,
+            pocBuyParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY + WINDOW + 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionExpired.selector);
+        rebalanceV2.executePublishedRebalancePOCtoPOC(nonce, pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    function test_executePublishedRebalancePOCtoPOC_RevertIfAlreadyExecuted() public {
+        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
+            _setupPOCtoPOCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalancePOCtoPOC.selector,
+            nonce,
+            pocSellParamsArray,
+            swapParamsArray,
+            pocBuyParamsArray
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalancePOCtoPOC(nonce, pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionAlreadyExecuted.selector);
+        rebalanceV2.executePublishedRebalancePOCtoPOC(nonce, pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    // ============ executePublishedRebalanceSupplyOTC tests ============
+
+    function _setupSupplyOTCForPublishExecute() internal returns (MockOTCv2 otc, POCBuyParams memory pocBuyParams) {
+        otc = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        otc.setCurrentSupplyIndex(0);
+        // supply(index, inputAmount, outputAmount): OTC sends inputAmount collateral to caller, pulls outputAmount launch from caller
+        otc.setSupply(0, 1100e18, 1000e18);
+        collateral1.mint(address(otc), 1100e18);
+
+        // Use a dedicated POC with no pre-set allowance so safeIncreaseAllowance(collateralAmount) in _rebalanceSupplyOTC does not overflow
+        MockPOC otcPoc = new MockPOC(address(launchToken), address(collateral1));
+        launchToken.mint(address(otcPoc), 2e24);
+
+        pocBuyParams = POCBuyParams({
+            pocContract: address(otcPoc),
+            collateral: address(collateral1),
+            collateralAmount: 1100e18,
+            minLaunchTokensOut: 0
+        });
+    }
+
+    function test_executePublishedRebalanceSupplyOTC_Success() public {
+        (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        uint256 nonce = 0;
+
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
+        );
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+
+        vm.warp(block.timestamp + DELAY);
+
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalanceSupplyOTC(nonce, otc, pocBuyParams);
+
+        uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(finalLaunchToken, initialLaunchToken, "Launch token balance should increase");
+    }
+
+    function test_executePublishedRebalanceSupplyOTC_RevertIfNotPublished() public {
+        (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
+        uint256 nonce = 0;
+
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionNotPublished.selector);
+        rebalanceV2.executePublishedRebalanceSupplyOTC(nonce, otc, pocBuyParams);
+    }
+
+    function test_executePublishedRebalanceSupplyOTC_RevertIfTooEarly() public {
+        (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY - 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionTooEarly.selector);
+        rebalanceV2.executePublishedRebalanceSupplyOTC(nonce, otc, pocBuyParams);
+    }
+
+    function test_executePublishedRebalanceSupplyOTC_RevertIfExpired() public {
+        (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY + WINDOW + 1);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionExpired.selector);
+        rebalanceV2.executePublishedRebalanceSupplyOTC(nonce, otc, pocBuyParams);
+    }
+
+    function test_executePublishedRebalanceSupplyOTC_RevertIfAlreadyExecuted() public {
+        (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
+        uint256 nonce = 0;
+        bytes memory actionData = abi.encodeWithSelector(
+            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
+        );
+
+        vm.prank(executor);
+        rebalanceV2.publishAction(actionData);
+        vm.warp(block.timestamp + DELAY);
+        vm.prank(executor);
+        rebalanceV2.executePublishedRebalanceSupplyOTC(nonce, otc, pocBuyParams);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalanceV2.ActionAlreadyExecuted.selector);
+        rebalanceV2.executePublishedRebalanceSupplyOTC(nonce, otc, pocBuyParams);
     }
 }
 
