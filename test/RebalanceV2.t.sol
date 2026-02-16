@@ -15,6 +15,7 @@ import {
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPOC} from "./mocks/MockPOC.sol";
 import {MockUniswapV2Router} from "./mocks/MockUniswapV2Router.sol";
+import {MockSwapRouterBase} from "./mocks/MockSwapRouterBase.sol";
 import {MockDAO} from "./mocks/MockDAO.sol";
 import {DataTypes} from "../src/interfaces/DataTypes.sol";
 
@@ -124,6 +125,55 @@ contract RebalanceV2Test is Test {
         // Set test contract as admin so tests can call adminRebalance* (rebalance only via admin or publish/execute)
         vm.prank(address(mockDao));
         rebalanceV2.setAdmin(owner);
+    }
+
+    // Encode path for SwapRouterBase/UniswapV3-style exactInput: token0 (20 bytes) + fee (3 bytes) + token1 (20 bytes)
+    function encodePathV3(address token0, uint24 fee, address token1) internal pure returns (bytes memory) {
+        return abi.encodePacked(token0, fee, token1);
+    }
+
+    /// @dev Test _swap branch for RouterType.SwapRouterBase (exactInput with path in data, no deadline)
+    function test_rebalanceLPtoPOC_Success_SwapRouterBase() public {
+        MockSwapRouterBase routerBase = new MockSwapRouterBase();
+        routerBase.setSwapRate(address(launchToken), address(collateral1), 11e17); // 1.1:1
+        collateral1.mint(address(routerBase), 2e24);
+        launchToken.mint(address(routerBase), 2e24);
+
+        AllowanceParams[] memory allowancesBase = new AllowanceParams[](2);
+        allowancesBase[0] =
+            AllowanceParams({token: address(launchToken), spender: address(routerBase), amount: type(uint256).max});
+        allowancesBase[1] =
+            AllowanceParams({token: address(collateral1), spender: address(routerBase), amount: type(uint256).max});
+        rebalanceV2.increaseAllowanceForSpenders(allowancesBase);
+
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        bytes memory path1 = encodePathV3(address(launchToken), 3000, address(collateral1));
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.SwapRouterBase,
+            routerAddress: address(routerBase),
+            path: new address[](0),
+            data: path1,
+            amountOutMinimum: 900e18
+        });
+
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+        launchToken.mint(address(poc1), 2e24);
+
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken;
+
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+
+        uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(finalLaunchToken, initialLaunchToken, "Launch token balance should increase after SwapRouterBase swap");
+        assertEq(poc1.tokensReceivedOnBuy(), 11e23, "POC1 should receive correct amount from SwapRouterBase flow");
     }
 
     function test_rebalanceLPtoPOC_Success() public {
@@ -585,6 +635,334 @@ contract RebalanceV2Test is Test {
         rebalanceV2.withdraw(address(collateral1), 1000e18);
     }
 
+    // --- onlyAdmin modifier tests ---
+
+    function test_adminRebalanceLPtoPOC_RevertIfNotAdmin() public {
+        address nonAdmin = address(0x456);
+        SwapParams[] memory swapParamsArray = new SwapParams[](0);
+        uint256[] memory amountsIn = new uint256[](0);
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](0);
+
+        vm.prank(nonAdmin);
+        vm.expectRevert(IRebalanceV2.OnlyAdmin.selector);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
+    // --- onlyDao modifier tests (setAdmin) ---
+
+    function test_setAdmin_RevertIfNotDao() public {
+        address nonDao = address(0x789);
+        address newAdmin = address(0x999);
+
+        vm.prank(nonDao);
+        vm.expectRevert(IRebalanceV2.OnlyDao.selector);
+        rebalanceV2.setAdmin(newAdmin);
+    }
+
+    function test_setAdmin_SuccessWhenCalledByDao() public {
+        address newAdmin = address(0xAAA);
+        assertEq(rebalanceV2.admin(), owner);
+
+        vm.prank(address(mockDao));
+        rebalanceV2.setAdmin(newAdmin);
+
+        assertEq(rebalanceV2.admin(), newAdmin);
+    }
+
+    // --- setProfitWalletDao tests ---
+
+    function test_setProfitWalletDao_RevertIfNotOwner() public {
+        ProfitWallets memory profitWallets = ProfitWallets({
+            meraFund: profitWalletMeraFund,
+            pocRoyalty: profitWalletPocRoyalty,
+            pocBuyback: profitWalletPocBuyback,
+            dao: address(0)
+        });
+        RebalanceV2 rebalanceWithZeroDao = new RebalanceV2(address(launchToken), profitWallets);
+        address nonOwner = address(0x123);
+        address newDao = address(0xDA0);
+
+        vm.prank(nonOwner);
+        vm.expectRevert();
+        rebalanceWithZeroDao.setProfitWalletDao(newDao);
+
+        assertEq(rebalanceWithZeroDao.profitWalletDao(), address(0), "DAO should remain unset");
+    }
+
+    function test_setProfitWalletDao_RevertIfDaoAlreadySet() public {
+        address anyNewDao = address(0xDA0);
+        assertEq(rebalanceV2.profitWalletDao(), address(mockDao), "DAO should be set in setUp");
+
+        vm.expectRevert(IRebalanceV2.DaoAlreadySet.selector);
+        rebalanceV2.setProfitWalletDao(anyNewDao);
+
+        assertEq(rebalanceV2.profitWalletDao(), address(mockDao), "DAO should remain unchanged");
+    }
+
+    function test_setProfitWalletDao_RevertIfNewDaoZero() public {
+        ProfitWallets memory profitWallets = ProfitWallets({
+            meraFund: profitWalletMeraFund,
+            pocRoyalty: profitWalletPocRoyalty,
+            pocBuyback: profitWalletPocBuyback,
+            dao: address(0)
+        });
+        RebalanceV2 rebalanceWithZeroDao = new RebalanceV2(address(launchToken), profitWallets);
+
+        vm.expectRevert(IRebalanceV2.InvalidProfitWalletAddress.selector);
+        rebalanceWithZeroDao.setProfitWalletDao(address(0));
+
+        assertEq(rebalanceWithZeroDao.profitWalletDao(), address(0), "DAO should remain unset");
+    }
+
+    function test_setProfitWalletDao_Success() public {
+        ProfitWallets memory profitWallets = ProfitWallets({
+            meraFund: profitWalletMeraFund,
+            pocRoyalty: profitWalletPocRoyalty,
+            pocBuyback: profitWalletPocBuyback,
+            dao: address(0)
+        });
+        RebalanceV2 rebalanceWithZeroDao = new RebalanceV2(address(launchToken), profitWallets);
+        address newDao = address(0xDA0);
+
+        rebalanceWithZeroDao.setProfitWalletDao(newDao);
+
+        assertEq(rebalanceWithZeroDao.profitWalletDao(), newDao, "DAO wallet should be set");
+    }
+
+    // --- changeMeraFundWallet tests ---
+
+    function test_changeMeraFundWallet_RevertIfNotMeraFundWallet() public {
+        address newWallet = address(0xA1);
+        address notMeraFund = address(0x999);
+
+        vm.prank(notMeraFund);
+        vm.expectRevert(IRebalanceV2.OnlyMeraFundWalletCanChange.selector);
+        rebalanceV2.changeMeraFundWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletMeraFund(), profitWalletMeraFund, "MeraFund wallet should not change");
+    }
+
+    function test_changeMeraFundWallet_RevertIfNewWalletZero() public {
+        vm.prank(profitWalletMeraFund);
+        vm.expectRevert(IRebalanceV2.InvalidProfitWalletAddress.selector);
+        rebalanceV2.changeMeraFundWallet(address(0));
+
+        assertEq(rebalanceV2.profitWalletMeraFund(), profitWalletMeraFund, "MeraFund wallet should not change");
+    }
+
+    function test_changeMeraFundWallet_SuccessNoAccumulatedProfit() public {
+        address newWallet = address(0xA1);
+        uint256 newWalletBalanceBefore = launchToken.balanceOf(newWallet);
+
+        vm.prank(profitWalletMeraFund);
+        rebalanceV2.changeMeraFundWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletMeraFund(), newWallet, "MeraFund wallet should be updated");
+        assertEq(rebalanceV2.accumulatedProfitMeraFund(), 0, "Accumulated profit should remain 0");
+        assertEq(launchToken.balanceOf(newWallet), newWalletBalanceBefore, "New wallet should not receive tokens");
+    }
+
+    function test_changeMeraFundWallet_SuccessWithAccumulatedProfit() public {
+        // Generate accumulated profit (do not call withdrawProfits)
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(launchToken);
+        path[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+        router.setSwapRate(address(launchToken), address(collateral1), 11e17);
+        collateral1.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken;
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+
+        address newWallet = address(0xA1);
+        uint256 expectedAmount = rebalanceV2.accumulatedProfitMeraFund();
+        assertGt(expectedAmount, 0, "Should have accumulated profit");
+        uint256 newWalletBalanceBefore = launchToken.balanceOf(newWallet);
+
+        vm.prank(profitWalletMeraFund);
+        rebalanceV2.changeMeraFundWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletMeraFund(), newWallet, "MeraFund wallet should be updated");
+        assertEq(rebalanceV2.accumulatedProfitMeraFund(), 0, "Accumulated profit should be reset");
+        assertEq(
+            launchToken.balanceOf(newWallet),
+            newWalletBalanceBefore + expectedAmount,
+            "New wallet should receive accumulated profit"
+        );
+    }
+
+    // --- changeRoyaltyWallet tests ---
+
+    function test_changeRoyaltyWallet_RevertIfNotRoyaltyWallet() public {
+        address newWallet = address(0xA2);
+        address notRoyalty = address(0x888);
+
+        vm.prank(notRoyalty);
+        vm.expectRevert(IRebalanceV2.OnlyRoyaltyWalletCanChange.selector);
+        rebalanceV2.changeRoyaltyWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletPocRoyalty(), profitWalletPocRoyalty, "Royalty wallet should not change");
+    }
+
+    function test_changeRoyaltyWallet_RevertIfNewWalletZero() public {
+        vm.prank(profitWalletPocRoyalty);
+        vm.expectRevert(IRebalanceV2.InvalidProfitWalletAddress.selector);
+        rebalanceV2.changeRoyaltyWallet(address(0));
+
+        assertEq(rebalanceV2.profitWalletPocRoyalty(), profitWalletPocRoyalty, "Royalty wallet should not change");
+    }
+
+    function test_changeRoyaltyWallet_SuccessNoAccumulatedProfit() public {
+        address newWallet = address(0xA2);
+        uint256 newWalletBalanceBefore = launchToken.balanceOf(newWallet);
+
+        vm.prank(profitWalletPocRoyalty);
+        rebalanceV2.changeRoyaltyWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletPocRoyalty(), newWallet, "Royalty wallet should be updated");
+        assertEq(rebalanceV2.accumulatedProfitPocRoyalty(), 0, "Accumulated profit should remain 0");
+        assertEq(launchToken.balanceOf(newWallet), newWalletBalanceBefore, "New wallet should not receive tokens");
+    }
+
+    function test_changeRoyaltyWallet_SuccessWithAccumulatedProfit() public {
+        // Generate accumulated profit (do not call withdrawProfits)
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(launchToken);
+        path[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+        router.setSwapRate(address(launchToken), address(collateral1), 11e17);
+        collateral1.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken;
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+
+        address newWallet = address(0xA2);
+        uint256 expectedAmount = rebalanceV2.accumulatedProfitPocRoyalty();
+        assertGt(expectedAmount, 0, "Should have accumulated profit");
+        uint256 newWalletBalanceBefore = launchToken.balanceOf(newWallet);
+
+        vm.prank(profitWalletPocRoyalty);
+        rebalanceV2.changeRoyaltyWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletPocRoyalty(), newWallet, "Royalty wallet should be updated");
+        assertEq(rebalanceV2.accumulatedProfitPocRoyalty(), 0, "Accumulated profit should be reset");
+        assertEq(
+            launchToken.balanceOf(newWallet),
+            newWalletBalanceBefore + expectedAmount,
+            "New wallet should receive accumulated profit"
+        );
+    }
+
+    // --- changeReturnWallet tests ---
+
+    function test_changeReturnWallet_RevertIfNotReturnWallet() public {
+        address newWallet = address(0xA3);
+        address notReturn = address(0x777);
+
+        vm.prank(notReturn);
+        vm.expectRevert(IRebalanceV2.OnlyReturnWalletCanChange.selector);
+        rebalanceV2.changeReturnWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletPocBuyback(), profitWalletPocBuyback, "Return wallet should not change");
+    }
+
+    function test_changeReturnWallet_RevertIfNewWalletZero() public {
+        vm.prank(profitWalletPocBuyback);
+        vm.expectRevert(IRebalanceV2.InvalidProfitWalletAddress.selector);
+        rebalanceV2.changeReturnWallet(address(0));
+
+        assertEq(rebalanceV2.profitWalletPocBuyback(), profitWalletPocBuyback, "Return wallet should not change");
+    }
+
+    function test_changeReturnWallet_SuccessNoAccumulatedProfit() public {
+        address newWallet = address(0xA3);
+        uint256 newWalletBalanceBefore = launchToken.balanceOf(newWallet);
+
+        vm.prank(profitWalletPocBuyback);
+        rebalanceV2.changeReturnWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletPocBuyback(), newWallet, "Return wallet should be updated");
+        assertEq(rebalanceV2.accumulatedProfitPocBuyback(), 0, "Accumulated profit should remain 0");
+        assertEq(launchToken.balanceOf(newWallet), newWalletBalanceBefore, "New wallet should not receive tokens");
+    }
+
+    function test_changeReturnWallet_SuccessWithAccumulatedProfit() public {
+        // Generate accumulated profit (do not call withdrawProfits)
+        uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(launchToken);
+        path[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+        router.setSwapRate(address(launchToken), address(collateral1), 11e17);
+        collateral1.mint(address(router), 2e24);
+        launchToken.mint(address(poc1), 2e24);
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = initialLaunchToken;
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+
+        address newWallet = address(0xA3);
+        uint256 expectedAmount = rebalanceV2.accumulatedProfitPocBuyback();
+        assertGt(expectedAmount, 0, "Should have accumulated profit");
+        uint256 newWalletBalanceBefore = launchToken.balanceOf(newWallet);
+
+        vm.prank(profitWalletPocBuyback);
+        rebalanceV2.changeReturnWallet(newWallet);
+
+        assertEq(rebalanceV2.profitWalletPocBuyback(), newWallet, "Return wallet should be updated");
+        assertEq(rebalanceV2.accumulatedProfitPocBuyback(), 0, "Accumulated profit should be reset");
+        assertEq(
+            launchToken.balanceOf(newWallet),
+            newWalletBalanceBefore + expectedAmount,
+            "New wallet should receive accumulated profit"
+        );
+    }
+
     function test_rebalanceLPtoPOC_RevertIfNoProfit() public {
         // Setup swap that doesn't generate profit
         SwapParams[] memory swapParamsArray = new SwapParams[](1);
@@ -794,6 +1172,13 @@ contract RebalanceV2Test is Test {
 
         vm.expectRevert(IRebalanceV2.InvalidProfitWalletAddress.selector);
         new RebalanceV2(address(launchToken), profitWallets);
+    }
+
+    /// @dev setAdmin(newAdmin) reverts with InvalidProfitWalletAddress when newAdmin is address(0)
+    function test_setAdmin_RevertIfInvalidProfitWalletAddress() public {
+        vm.prank(address(mockDao));
+        vm.expectRevert(IRebalanceV2.InvalidProfitWalletAddress.selector);
+        rebalanceV2.setAdmin(address(0));
     }
 
     function test_constructor_AcceptsZeroDao() public {
