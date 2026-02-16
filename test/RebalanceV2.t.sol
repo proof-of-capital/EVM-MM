@@ -23,9 +23,8 @@ import {DataTypes} from "../src/interfaces/DataTypes.sol";
 
 // Exposes _isPOCContract for testing line 281 (profitWalletDao == address(0) return false)
 contract RebalanceV2ExposedIsPOC is RebalanceV2 {
-    constructor(address _launchToken, ProfitWallets memory _profitWallets)
-        RebalanceV2(_launchToken, _profitWallets)
-    {}
+    constructor(address _launchToken, ProfitWallets memory _profitWallets) RebalanceV2(_launchToken, _profitWallets) {}
+
     function exposedIsPOCContract(address spender) external view returns (bool) {
         return _isPOCContract(spender);
     }
@@ -178,10 +177,7 @@ contract RebalanceV2Test is Test {
 
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
         launchToken.mint(address(poc1), 2e24);
 
@@ -670,11 +666,7 @@ contract RebalanceV2Test is Test {
     // --- adminRebalanceSupplyOTC tests ---
 
     function test_adminRebalanceSupplyOTC_RevertIfNotAdmin() public {
-        MockOTCv2 mockOtc = new MockOTCv2(
-            address(collateral1),
-            address(launchToken),
-            address(rebalanceV2)
-        );
+        MockOTCv2 mockOtc = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
         mockOtc.setSupply(0, 100e18, 100e18);
         collateral1.mint(address(mockOtc), 100e18);
         POCBuyParams memory pocBuyParams = POCBuyParams({
@@ -693,11 +685,7 @@ contract RebalanceV2Test is Test {
     function test_adminRebalanceSupplyOTC_Success() public {
         uint256 launchAmount = 100e18;
         uint256 collateralAmount = 100e18;
-        MockOTCv2 mockOtc = new MockOTCv2(
-            address(collateral1),
-            address(launchToken),
-            address(rebalanceV2)
-        );
+        MockOTCv2 mockOtc = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
         mockOtc.setSupply(0, collateralAmount, launchAmount);
         collateral1.mint(address(mockOtc), collateralAmount);
 
@@ -718,7 +706,11 @@ contract RebalanceV2Test is Test {
         assertEq(pocOtc.tokensReceivedOnBuy(), collateralAmount, "POC should receive collateral");
         assertEq(pocOtc.caller(), address(rebalanceV2), "POC caller should be rebalance contract");
         assertEq(launchToken.balanceOf(address(mockOtc)), launchAmount, "OTC should hold launch tokens");
-        assertGt(launchToken.balanceOf(address(rebalanceV2)), launchBefore - launchAmount, "Rebalance should have profit from POC buy");
+        assertGt(
+            launchToken.balanceOf(address(rebalanceV2)),
+            launchBefore - launchAmount,
+            "Rebalance should have profit from POC buy"
+        );
     }
 
     function test_adminRebalanceSupplyOTC_RevertWhenOTCZero() public {
@@ -735,11 +727,7 @@ contract RebalanceV2Test is Test {
 
     function test_adminRebalanceSupplyOTC_RevertWhenNotOTCAdmin() public {
         address wrongAdmin = address(0xBAD);
-        MockOTCv2 mockOtc = new MockOTCv2(
-            address(collateral1),
-            address(launchToken),
-            wrongAdmin
-        );
+        MockOTCv2 mockOtc = new MockOTCv2(address(collateral1), address(launchToken), wrongAdmin);
         mockOtc.setSupply(0, 100e18, 100e18);
         collateral1.mint(address(mockOtc), 100e18);
         POCBuyParams memory pocBuyParams = POCBuyParams({
@@ -756,11 +744,7 @@ contract RebalanceV2Test is Test {
     function test_adminRebalanceSupplyOTC_RevertWhenOTCOutputMismatch() public {
         MockERC20 otherToken = new MockERC20("Other", "OTH");
         otherToken.mint(address(rebalanceV2), 100e18);
-        MockOTCv2 mockOtc = new MockOTCv2(
-            address(collateral1),
-            address(otherToken),
-            address(rebalanceV2)
-        );
+        MockOTCv2 mockOtc = new MockOTCv2(address(collateral1), address(otherToken), address(rebalanceV2));
         mockOtc.setSupply(0, 100e18, 100e18);
         collateral1.mint(address(mockOtc), 100e18);
         POCBuyParams memory pocBuyParams = POCBuyParams({
@@ -775,11 +759,7 @@ contract RebalanceV2Test is Test {
     }
 
     function test_adminRebalanceSupplyOTC_RevertWhenOTCInputIsEth() public {
-        MockOTCv2 mockOtc = new MockOTCv2(
-            address(0),
-            address(launchToken),
-            address(rebalanceV2)
-        );
+        MockOTCv2 mockOtc = new MockOTCv2(address(0), address(launchToken), address(rebalanceV2));
         mockOtc.setSupply(0, 100e18, 100e18);
         POCBuyParams memory pocBuyParams = POCBuyParams({
             pocContract: address(poc1),
@@ -793,11 +773,7 @@ contract RebalanceV2Test is Test {
     }
 
     function test_adminRebalanceSupplyOTC_RevertWhenCollateralNotOTCInput() public {
-        MockOTCv2 mockOtc = new MockOTCv2(
-            address(collateral1),
-            address(launchToken),
-            address(rebalanceV2)
-        );
+        MockOTCv2 mockOtc = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
         mockOtc.setSupply(0, 100e18, 100e18);
         collateral1.mint(address(mockOtc), 100e18);
         POCBuyParams memory pocBuyParams = POCBuyParams({
@@ -814,11 +790,7 @@ contract RebalanceV2Test is Test {
     function test_adminRebalanceSupplyOTC_RevertWhenInsufficientCollateralBalance() public {
         uint256 collateralFromOtc = 10e18;
         uint256 requestedForPoc = 100e18;
-        MockOTCv2 mockOtc = new MockOTCv2(
-            address(collateral1),
-            address(launchToken),
-            address(rebalanceV2)
-        );
+        MockOTCv2 mockOtc = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
         mockOtc.setSupply(0, collateralFromOtc, 100e18);
         collateral1.mint(address(mockOtc), collateralFromOtc);
 
@@ -963,10 +935,7 @@ contract RebalanceV2Test is Test {
         });
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
         router.setSwapRate(address(launchToken), address(collateral1), 11e17);
         collateral1.mint(address(router), 2e24);
@@ -1041,10 +1010,7 @@ contract RebalanceV2Test is Test {
         });
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
         router.setSwapRate(address(launchToken), address(collateral1), 11e17);
         collateral1.mint(address(router), 2e24);
@@ -1119,10 +1085,7 @@ contract RebalanceV2Test is Test {
         });
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
         router.setSwapRate(address(launchToken), address(collateral1), 11e17);
         collateral1.mint(address(router), 2e24);
@@ -1566,10 +1529,7 @@ contract RebalanceV2Test is Test {
 
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
         launchToken.mint(address(poc1), 2e24);
 
@@ -1597,10 +1557,7 @@ contract RebalanceV2Test is Test {
 
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
         launchToken.mint(address(poc1), 2e24);
 
@@ -1632,10 +1589,7 @@ contract RebalanceV2Test is Test {
         // POC buy expects collateral1, but swap outputs collateral2 -> InvalidCollateralToken
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
 
         vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
@@ -1777,10 +1731,7 @@ contract RebalanceV2Test is Test {
 
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
 
         vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
@@ -1810,10 +1761,7 @@ contract RebalanceV2Test is Test {
         // POC buy expects collateral1, but swap outputs collateral2 -> InvalidCollateralToken
         POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
 
         vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
@@ -2062,11 +2010,14 @@ contract RebalanceV2Test is Test {
 
     // ============ executePublishedRebalanceLPtoPOC tests ============
 
-    function _setupLPtoPOCForPublishExecute() internal returns (
-        SwapParams[] memory swapParamsArray,
-        uint256[] memory amountsIn,
-        POCBuyParams[] memory pocBuyParamsArray
-    ) {
+    function _setupLPtoPOCForPublishExecute()
+        internal
+        returns (
+            SwapParams[] memory swapParamsArray,
+            uint256[] memory amountsIn,
+            POCBuyParams[] memory pocBuyParamsArray
+        )
+    {
         router.setSwapRate(address(launchToken), address(collateral1), 11e17); // 1.1:1
         collateral1.mint(address(router), 2e24);
         launchToken.mint(address(poc1), 2e24);
@@ -2085,10 +2036,7 @@ contract RebalanceV2Test is Test {
         });
         pocBuyParamsArray = new POCBuyParams[](1);
         pocBuyParamsArray[0] = POCBuyParams({
-            pocContract: address(poc1),
-            collateral: address(collateral1),
-            collateralAmount: 1e24,
-            minLaunchTokensOut: 0
+            pocContract: address(poc1), collateral: address(collateral1), collateralAmount: 1e24, minLaunchTokensOut: 0
         });
         amountsIn = new uint256[](1);
         amountsIn[0] = initialLaunchToken;
@@ -2181,10 +2129,10 @@ contract RebalanceV2Test is Test {
 
     // ============ executePublishedRebalancePOCtoLP tests ============
 
-    function _setupPOCtoLPForPublishExecute() internal returns (
-        POCSellParams[] memory pocSellParamsArray,
-        SwapParams[] memory swapParamsArray
-    ) {
+    function _setupPOCtoLPForPublishExecute()
+        internal
+        returns (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray)
+    {
         launchToken.mint(address(rebalanceV2), 5000e18);
         pocSellParamsArray = new POCSellParams[](2);
         pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
@@ -2303,11 +2251,14 @@ contract RebalanceV2Test is Test {
 
     // ============ executePublishedRebalancePOCtoPOC tests ============
 
-    function _setupPOCtoPOCForPublishExecute() internal returns (
-        POCSellParams[] memory pocSellParamsArray,
-        SwapParams[] memory swapParamsArray,
-        POCBuyParams[] memory pocBuyParamsArray
-    ) {
+    function _setupPOCtoPOCForPublishExecute()
+        internal
+        returns (
+            POCSellParams[] memory pocSellParamsArray,
+            SwapParams[] memory swapParamsArray,
+            POCBuyParams[] memory pocBuyParamsArray
+        )
+    {
         launchToken.mint(address(rebalanceV2), 5000e18);
         pocSellParamsArray = new POCSellParams[](2);
         pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
@@ -2358,8 +2309,11 @@ contract RebalanceV2Test is Test {
     }
 
     function test_executePublishedRebalancePOCtoPOC_Success() public {
-        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
-            _setupPOCtoPOCForPublishExecute();
+        (
+            POCSellParams[] memory pocSellParamsArray,
+            SwapParams[] memory swapParamsArray,
+            POCBuyParams[] memory pocBuyParamsArray
+        ) = _setupPOCtoPOCForPublishExecute();
         uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
         uint256 nonce = 0;
 
@@ -2383,8 +2337,11 @@ contract RebalanceV2Test is Test {
     }
 
     function test_executePublishedRebalancePOCtoPOC_RevertIfNotPublished() public {
-        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
-            _setupPOCtoPOCForPublishExecute();
+        (
+            POCSellParams[] memory pocSellParamsArray,
+            SwapParams[] memory swapParamsArray,
+            POCBuyParams[] memory pocBuyParamsArray
+        ) = _setupPOCtoPOCForPublishExecute();
         uint256 nonce = 0;
 
         vm.warp(block.timestamp + DELAY);
@@ -2394,8 +2351,11 @@ contract RebalanceV2Test is Test {
     }
 
     function test_executePublishedRebalancePOCtoPOC_RevertIfTooEarly() public {
-        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
-            _setupPOCtoPOCForPublishExecute();
+        (
+            POCSellParams[] memory pocSellParamsArray,
+            SwapParams[] memory swapParamsArray,
+            POCBuyParams[] memory pocBuyParamsArray
+        ) = _setupPOCtoPOCForPublishExecute();
         uint256 nonce = 0;
         bytes memory actionData = abi.encodeWithSelector(
             RebalanceV2.executePublishedRebalancePOCtoPOC.selector,
@@ -2415,8 +2375,11 @@ contract RebalanceV2Test is Test {
     }
 
     function test_executePublishedRebalancePOCtoPOC_RevertIfExpired() public {
-        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
-            _setupPOCtoPOCForPublishExecute();
+        (
+            POCSellParams[] memory pocSellParamsArray,
+            SwapParams[] memory swapParamsArray,
+            POCBuyParams[] memory pocBuyParamsArray
+        ) = _setupPOCtoPOCForPublishExecute();
         uint256 nonce = 0;
         bytes memory actionData = abi.encodeWithSelector(
             RebalanceV2.executePublishedRebalancePOCtoPOC.selector,
@@ -2436,8 +2399,11 @@ contract RebalanceV2Test is Test {
     }
 
     function test_executePublishedRebalancePOCtoPOC_RevertIfAlreadyExecuted() public {
-        (POCSellParams[] memory pocSellParamsArray, SwapParams[] memory swapParamsArray, POCBuyParams[] memory pocBuyParamsArray) =
-            _setupPOCtoPOCForPublishExecute();
+        (
+            POCSellParams[] memory pocSellParamsArray,
+            SwapParams[] memory swapParamsArray,
+            POCBuyParams[] memory pocBuyParamsArray
+        ) = _setupPOCtoPOCForPublishExecute();
         uint256 nonce = 0;
         bytes memory actionData = abi.encodeWithSelector(
             RebalanceV2.executePublishedRebalancePOCtoPOC.selector,
@@ -2484,9 +2450,8 @@ contract RebalanceV2Test is Test {
         uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
         uint256 nonce = 0;
 
-        bytes memory actionData = abi.encodeWithSelector(
-            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
-        );
+        bytes memory actionData =
+            abi.encodeWithSelector(RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams);
         vm.prank(executor);
         rebalanceV2.publishAction(actionData);
 
@@ -2512,9 +2477,8 @@ contract RebalanceV2Test is Test {
     function test_executePublishedRebalanceSupplyOTC_RevertIfTooEarly() public {
         (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
         uint256 nonce = 0;
-        bytes memory actionData = abi.encodeWithSelector(
-            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
-        );
+        bytes memory actionData =
+            abi.encodeWithSelector(RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams);
 
         vm.prank(executor);
         rebalanceV2.publishAction(actionData);
@@ -2528,9 +2492,8 @@ contract RebalanceV2Test is Test {
     function test_executePublishedRebalanceSupplyOTC_RevertIfExpired() public {
         (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
         uint256 nonce = 0;
-        bytes memory actionData = abi.encodeWithSelector(
-            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
-        );
+        bytes memory actionData =
+            abi.encodeWithSelector(RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams);
 
         vm.prank(executor);
         rebalanceV2.publishAction(actionData);
@@ -2544,9 +2507,8 @@ contract RebalanceV2Test is Test {
     function test_executePublishedRebalanceSupplyOTC_RevertIfAlreadyExecuted() public {
         (MockOTCv2 otc, POCBuyParams memory pocBuyParams) = _setupSupplyOTCForPublishExecute();
         uint256 nonce = 0;
-        bytes memory actionData = abi.encodeWithSelector(
-            RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams
-        );
+        bytes memory actionData =
+            abi.encodeWithSelector(RebalanceV2.executePublishedRebalanceSupplyOTC.selector, nonce, otc, pocBuyParams);
 
         vm.prank(executor);
         rebalanceV2.publishAction(actionData);

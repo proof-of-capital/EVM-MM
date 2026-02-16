@@ -20,11 +20,7 @@ contract MockOTCv2 is IOTCv2 {
     uint8 private _currentSupplyIndex;
     mapping(uint8 => Supply) private _supplies;
 
-    constructor(
-        address inputToken_,
-        address outputToken_,
-        address adminAddress_
-    ) {
+    constructor(address inputToken_, address outputToken_, address adminAddress_) {
         _inputToken = inputToken_;
         _outputToken = outputToken_;
         _adminAddress = adminAddress_;
