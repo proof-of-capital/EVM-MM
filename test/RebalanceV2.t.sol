@@ -1267,6 +1267,34 @@ contract RebalanceV2Test is Test {
         rebalanceV2.increaseAllowanceForSpenders(allowances);
     }
 
+    // Covers outer catch in _isPOCContract when pocIndex reverts
+    function test_increaseAllowanceForSpenders_POCCheck_WhenPocIndexReverts() public {
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
+        mockDao.setPocIndexReverts(true);
+
+        AllowanceParams[] memory allowances = new AllowanceParams[](1);
+        allowances[0] = AllowanceParams({token: address(collateral1), spender: address(router), amount: 1000e18});
+
+        vm.expectRevert(IRebalanceV2.WithdrawLockNotExpired.selector);
+        rebalanceV2.increaseAllowanceForSpenders(allowances);
+    }
+
+    // Covers inner catch in _isPOCContract when getPOCContract reverts
+    function test_increaseAllowanceForSpenders_POCCheck_WhenGetPOCContractReverts() public {
+        mockDao.setCurrentStage(DataTypes.Stage.Active);
+        mockDao.setPocIndexReverts(false);
+        mockDao.setGetPOCContractReverts(true);
+
+        MockPOC newPoc = new MockPOC(address(launchToken), address(collateral1));
+        mockDao.addPOCContract(address(newPoc), address(collateral1));
+
+        AllowanceParams[] memory allowances = new AllowanceParams[](1);
+        allowances[0] = AllowanceParams({token: address(launchToken), spender: address(newPoc), amount: 1000e18});
+
+        vm.expectRevert(IRebalanceV2.WithdrawLockNotExpired.selector);
+        rebalanceV2.increaseAllowanceForSpenders(allowances);
+    }
+
     function test_withdrawProfits_PartialAccumulated() public {
         // Generate profit for only some wallets
         // Setup a simple profitable swap
@@ -1390,6 +1418,31 @@ contract RebalanceV2Test is Test {
         launchToken.mint(address(router), 5e24);
 
         // Should revert with InvalidPath error
+        vm.expectRevert(IRebalanceV2.InvalidPath.selector);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
+    /// @dev Test require(swapParams.path.length > 0, InvalidPath()) in _getTokenIn (RebalanceV2.sol L719).
+    /// UniswapV2 with empty path triggers this check when resolving input token.
+    function test_getTokenIn_RevertWhenPathEmpty_UniswapV2() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory emptyPath = new address[](0);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: emptyPath,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        router.setSwapRate(address(collateral3), address(launchToken), 11e17);
+        launchToken.mint(address(router), 5e24);
+
         vm.expectRevert(IRebalanceV2.InvalidPath.selector);
         rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
