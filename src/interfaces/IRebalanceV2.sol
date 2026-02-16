@@ -143,6 +143,9 @@ interface IRebalanceV2 {
     /// @notice Thrown when caller is not admin
     error OnlyAdmin();
 
+    /// @notice Thrown when action is already published (duplicate publish)
+    error ActionAlreadyPublished();
+
     /// @notice Thrown when action is not published
     error ActionNotPublished();
 

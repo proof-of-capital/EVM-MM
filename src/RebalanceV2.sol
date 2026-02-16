@@ -652,7 +652,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      */
     function publishAction(bytes calldata actionData) external {
         bytes32 actionHash = _calculateActionHash(msg.sender, actionData);
-        require(publishedActions[actionHash] == 0, "Action already published");
+        require(publishedActions[actionHash] == 0, ActionAlreadyPublished());
 
         publishedActions[actionHash] = block.timestamp;
         emit ActionPublished(msg.sender, actionHash, block.timestamp);
