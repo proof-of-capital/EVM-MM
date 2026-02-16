@@ -1420,6 +1420,54 @@ contract RebalanceV2Test is Test {
         rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
+    /// @dev Test InvalidCollateralToken in _rebalancePOCtoLP: swap input must match POC sell collateral.
+    function test_rebalancePOCtoLP_RevertIfInvalidCollateralToken() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+
+        // Swap path: collateral1 -> launchToken (input is collateral1), but we sell to poc3 which gives collateral3
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(collateral1);
+        path[1] = address(launchToken);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
+    /// @dev Test InvalidLaunchToken in _rebalancePOCtoLP: swap output must be launchToken.
+    function test_rebalancePOCtoLP_RevertIfInvalidLaunchToken() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+
+        // Swap path: collateral3 -> collateral1 (output is collateral1, not launchToken)
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(collateral3);
+        path[1] = address(collateral1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        vm.expectRevert(IRebalanceV2.InvalidLaunchToken.selector);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+    }
+
     /// @dev Test require(swapParams.data.length >= 20, InvalidV3Path()) in _getTokenOut (RebalanceV2.sol L744).
     /// adminRebalanceLPtoPOC calls _getTokenOut first (no _getTokenIn before it), so this path hits the check in _getTokenOut.
     function test_rebalanceLPtoPOC_RevertIfInvalidV3Path_DataTooShort() public {
@@ -1452,6 +1500,40 @@ contract RebalanceV2Test is Test {
         rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 
+    /// @dev Test InvalidCollateralToken in _rebalanceLPtoPOC: swap output token must match POC buy collateral.
+    function test_rebalanceLPtoPOC_RevertIfInvalidCollateralToken() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+        launchToken.mint(address(poc1), 2e24);
+
+        // Swap path: launchToken -> collateral2 (output is collateral2)
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(launchToken);
+        path[1] = address(collateral2);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 1000e18;
+
+        // POC buy expects collateral1, but swap outputs collateral2 -> InvalidCollateralToken
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+
+        vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
     function test_withdraw_LaunchTokenWhenDAOUnavailable() public {
         // Set DAO to revert (simulating unavailable DAO)
         mockDao.setShouldRevert(true);
@@ -1472,6 +1554,14 @@ contract RebalanceV2Test is Test {
         // After dissolution - should be unlocked
         mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
         assertTrue(rebalanceV2.isWithdrawUnlocked(), "Should be unlocked after dissolution");
+    }
+
+    // Covers false branch of (profitWalletDao == address(0)) and catch in _isWithdrawUnlocked
+    function test_isWithdrawUnlocked_WhenDaoSet_GetDaoStateReverts_ReturnsFalse() public {
+        assertEq(rebalanceV2.profitWalletDao(), address(mockDao), "DAO should be set in setUp");
+        mockDao.setShouldRevert(true);
+        assertFalse(rebalanceV2.isWithdrawUnlocked(), "When getDaoState reverts, withdrawal should remain locked");
+        mockDao.setShouldRevert(false);
     }
 
     function test_setWithdrawLaunchLock_StillWorks() public {
@@ -1541,6 +1631,71 @@ contract RebalanceV2Test is Test {
 
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
+        rebalanceV2.adminRebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    /// @dev Test InvalidCollateralToken in _rebalancePOCtoPOC: swap input must match POC sell collateral.
+    function test_rebalancePOCtoPOC_RevertIfInvalidCollateralToken_TokenIn() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+
+        // Swap path: collateral1 -> collateral2 (tokenIn is collateral1), but we sold to poc3 which gives collateral3
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(collateral1);
+        path[1] = address(collateral2);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+
+        vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
+        rebalanceV2.adminRebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    /// @dev Test InvalidCollateralToken in _rebalancePOCtoPOC: swap output must match POC buy collateral.
+    function test_rebalancePOCtoPOC_RevertIfInvalidCollateralToken_TokenOut() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+
+        // Swap path: collateral3 -> collateral2 (tokenOut is collateral2)
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory path = new address[](2);
+        path[0] = address(collateral3);
+        path[1] = address(collateral2);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: path,
+            data: "",
+            amountOutMinimum: 1350e18
+        });
+
+        // POC buy expects collateral1, but swap outputs collateral2 -> InvalidCollateralToken
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+
+        vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
         rebalanceV2.adminRebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
     }
 
