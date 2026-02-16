@@ -672,12 +672,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         uint256[] calldata amountsIn,
         POCBuyParams[] calldata pocBuyParamsArray
     ) external {
-        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
-        _validateActionTiming(actionHash);
-
-        executedActions[actionHash] = true;
-        emit ActionExecuted(msg.sender, actionHash);
-
+        _validateAndMarkPublishedActionExecuted();
         _rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 
@@ -693,12 +688,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         POCSellParams[] calldata pocSellParamsArray,
         SwapParams[] calldata swapParamsArray
     ) external {
-        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
-        _validateActionTiming(actionHash);
-
-        executedActions[actionHash] = true;
-        emit ActionExecuted(msg.sender, actionHash);
-
+        _validateAndMarkPublishedActionExecuted();
         _rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
@@ -716,12 +706,7 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         SwapParams[] calldata swapParamsArray,
         POCBuyParams[] calldata pocBuyParamsArray
     ) external {
-        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
-        _validateActionTiming(actionHash);
-
-        executedActions[actionHash] = true;
-        emit ActionExecuted(msg.sender, actionHash);
-
+        _validateAndMarkPublishedActionExecuted();
         _rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
     }
 
@@ -736,13 +721,20 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         external
         override
     {
-        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
+        _validateAndMarkPublishedActionExecuted();
+        _rebalanceSupplyOTC(otc, pocBuyParams);
+    }
+
+    /**
+     * @notice Validate published action timing and mark as executed
+     * @dev Shared preamble for all executePublished*; uses msg.sender and msg.data from caller
+     */
+    function _validateAndMarkPublishedActionExecuted() internal returns (bytes32 actionHash) {
+        actionHash = _calculateActionHash(msg.sender, msg.data);
         _validateActionTiming(actionHash);
 
         executedActions[actionHash] = true;
         emit ActionExecuted(msg.sender, actionHash);
-
-        _rebalanceSupplyOTC(otc, pocBuyParams);
     }
 
     /**
