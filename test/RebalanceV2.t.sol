@@ -21,6 +21,16 @@ import {MockOTCv2} from "./mocks/MockOTCv2.sol";
 import {IOTCv2} from "../src/interfaces/IOTCv2.sol";
 import {DataTypes} from "../src/interfaces/DataTypes.sol";
 
+// Exposes _isPOCContract for testing line 281 (profitWalletDao == address(0) return false)
+contract RebalanceV2ExposedIsPOC is RebalanceV2 {
+    constructor(address _launchToken, ProfitWallets memory _profitWallets)
+        RebalanceV2(_launchToken, _profitWallets)
+    {}
+    function exposedIsPOCContract(address spender) external view returns (bool) {
+        return _isPOCContract(spender);
+    }
+}
+
 contract RebalanceV2Test is Test {
     RebalanceV2 public rebalanceV2;
     MockERC20 public launchToken;
@@ -1295,6 +1305,20 @@ contract RebalanceV2Test is Test {
         rebalanceV2.increaseAllowanceForSpenders(allowances);
     }
 
+    // Covers line 281: when profitWalletDao is address(0), _isPOCContract returns false
+    function test_isPOCContract_WhenProfitWalletDaoZero_ReturnsFalse() public {
+        ProfitWallets memory profitWallets = ProfitWallets({
+            meraFund: profitWalletMeraFund,
+            pocRoyalty: profitWalletPocRoyalty,
+            pocBuyback: profitWalletPocBuyback,
+            dao: address(0)
+        });
+        RebalanceV2ExposedIsPOC rebalanceExposed = new RebalanceV2ExposedIsPOC(address(launchToken), profitWallets);
+        assertEq(rebalanceExposed.profitWalletDao(), address(0), "DAO should be unset");
+        assertFalse(rebalanceExposed.exposedIsPOCContract(address(poc1)), "No spender is POC when DAO is not set");
+        assertFalse(rebalanceExposed.exposedIsPOCContract(address(router)), "Arbitrary spender should not be POC");
+    }
+
     function test_withdrawProfits_PartialAccumulated() public {
         // Generate profit for only some wallets
         // Setup a simple profitable swap
@@ -1638,6 +1662,19 @@ contract RebalanceV2Test is Test {
         // After dissolution - should be unlocked
         mockDao.setCurrentStage(DataTypes.Stage.Dissolved);
         assertTrue(rebalanceV2.isWithdrawUnlocked(), "Should be unlocked after dissolution");
+    }
+
+    // Covers line 265: when profitWalletDao is address(0), _isWithdrawUnlocked returns true (no DAO = no lock)
+    function test_isWithdrawUnlocked_WhenProfitWalletDaoZero_ReturnsTrue() public {
+        ProfitWallets memory profitWallets = ProfitWallets({
+            meraFund: profitWalletMeraFund,
+            pocRoyalty: profitWalletPocRoyalty,
+            pocBuyback: profitWalletPocBuyback,
+            dao: address(0)
+        });
+        RebalanceV2 rebalanceWithZeroDao = new RebalanceV2(address(launchToken), profitWallets);
+        assertEq(rebalanceWithZeroDao.profitWalletDao(), address(0), "DAO should be unset");
+        assertTrue(rebalanceWithZeroDao.isWithdrawUnlocked(), "Withdraw should be unlocked when no DAO is set");
     }
 
     // Covers false branch of (profitWalletDao == address(0)) and catch in _isWithdrawUnlocked
