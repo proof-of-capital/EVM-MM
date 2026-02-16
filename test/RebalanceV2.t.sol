@@ -1553,6 +1553,37 @@ contract RebalanceV2Test is Test {
         rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 
+    /// @dev Test require(swapParams.path.length > 0, InvalidPath()) in _getTokenOut (RebalanceV2.sol L738).
+    /// adminRebalanceLPtoPOC calls _getTokenOut first (no _getTokenIn before it), so this path hits the check in _getTokenOut.
+    function test_rebalanceLPtoPOC_RevertIfInvalidPath_V2_EmptyPath() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        address[] memory emptyPath = new address[](0);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: emptyPath,
+            data: "",
+            amountOutMinimum: 900e18
+        });
+
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 1000e18;
+
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+        launchToken.mint(address(poc1), 2e24);
+
+        vm.expectRevert(IRebalanceV2.InvalidPath.selector);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
     /// @dev Test InvalidCollateralToken in _rebalanceLPtoPOC: swap output token must match POC buy collateral.
     function test_rebalanceLPtoPOC_RevertIfInvalidCollateralToken() public {
         launchToken.mint(address(rebalanceV2), 5000e18);
