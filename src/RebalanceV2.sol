@@ -43,6 +43,7 @@ import "./interfaces/IUniswapV2Router01.sol";
 import "./interfaces/IUniswapV2Router02.sol";
 import "./interfaces/IDAO.sol";
 import "./interfaces/DataTypes.sol";
+import "./interfaces/IOTCv2.sol";
 
 /**
  * @title RebalanceV2 Contract for Proof of Capital
@@ -510,6 +511,36 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
+     * @notice OTC supply rebalancing (internal): supply LAUNCH to OTC, receive INPUT, buy LAUNCH from POC with INPUT as collateral
+     * @dev Single transaction, no DEX swaps. ERC20 INPUT only (no ETH).
+     * @param otc OTCv2 supply contract (this contract must be its admin)
+     * @param pocBuyParams Single POC buy (collateral must equal otc.INPUT_TOKEN())
+     */
+    function _rebalanceSupplyOTC(IOTCv2 otc, POCBuyParams calldata pocBuyParams) internal {
+        require(address(otc) != address(0), InvalidOTC());
+        require(otc.ADMIN_ADDRESS() == address(this), NotOTCAdmin());
+        require(otc.OUTPUT_TOKEN() == address(launchToken), OTCOutputMismatch());
+        require(otc.INPUT_TOKEN() != address(0), OTCInputIsEth());
+        require(pocBuyParams.collateral == otc.INPUT_TOKEN(), CollateralNotOTCInput());
+
+        (, uint256 outputAmount) = otc.supplies(otc.currentSupplyIndex());
+        uint256 usedLaunchTokens = outputAmount;
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+
+        launchToken.safeIncreaseAllowance(address(otc), usedLaunchTokens);
+        otc.supplyOutput();
+
+        uint256 collateralBalance = IERC20(pocBuyParams.collateral).balanceOf(address(this));
+        require(pocBuyParams.collateralAmount <= collateralBalance, InsufficientCollateralBalance());
+
+        IERC20(pocBuyParams.collateral).safeIncreaseAllowance(pocBuyParams.pocContract, pocBuyParams.collateralAmount);
+        IProofOfCapital(pocBuyParams.pocContract)
+            .buyLaunchTokens(pocBuyParams.collateralAmount, pocBuyParams.minLaunchTokensOut);
+
+        _checkProfitAndDistribute(initialLaunchBalance, usedLaunchTokens);
+    }
+
+    /**
      * @notice Admin LP to POC rebalancing (no delays)
      * @dev Admin can execute rebalancing without any delays
      * @param swapParamsArray Array of swap parameters for DEX swaps
@@ -606,6 +637,15 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
+     * @notice Admin OTC supply rebalancing (no delays)
+     * @param otc OTCv2 supply contract
+     * @param pocBuyParams POC buy parameters
+     */
+    function adminRebalanceSupplyOTC(IOTCv2 otc, POCBuyParams calldata pocBuyParams) external override onlyAdmin {
+        _rebalanceSupplyOTC(otc, pocBuyParams);
+    }
+
+    /**
      * @notice Publish action for delayed execution
      * @dev Users can publish their action calldata which will be executable after DELAY
      * @param actionData Future calldata with function selector and all parameters (including nonce if needed)
@@ -683,6 +723,26 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         emit ActionExecuted(msg.sender, actionHash);
 
         _rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+    }
+
+    /**
+     * @notice Execute published OTC supply rebalancing action
+     * @dev Executes published action after delay and within execution window. OTC supply only via publish/execute.
+     * @param nonce Nonce parameter (not used in logic, only for hash calculation)
+     * @param otc OTCv2 supply contract
+     * @param pocBuyParams POC buy parameters
+     */
+    function executePublishedRebalanceSupplyOTC(uint256 nonce, IOTCv2 otc, POCBuyParams calldata pocBuyParams)
+        external
+        override
+    {
+        bytes32 actionHash = _calculateActionHash(msg.sender, msg.data);
+        _validateActionTiming(actionHash);
+
+        executedActions[actionHash] = true;
+        emit ActionExecuted(msg.sender, actionHash);
+
+        _rebalanceSupplyOTC(otc, pocBuyParams);
     }
 
     /**

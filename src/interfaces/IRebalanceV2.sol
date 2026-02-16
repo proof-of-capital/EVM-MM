@@ -2,6 +2,7 @@
 pragma solidity 0.8.29;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./IOTCv2.sol";
 
 /**
  * @title IRebalanceV2 Interface
@@ -155,6 +156,24 @@ interface IRebalanceV2 {
     error ActionAlreadyExecuted();
     /// @notice Thrown when trying to set DAO wallet but it is already set
     error DaoAlreadySet();
+
+    /// @notice Thrown when OTC contract address is zero or invalid
+    error InvalidOTC();
+
+    /// @notice Thrown when RebalanceV2 is not the admin of the OTC contract
+    error NotOTCAdmin();
+
+    /// @notice Thrown when OTC OUTPUT_TOKEN does not match RebalanceV2 launch token
+    error OTCOutputMismatch();
+
+    /// @notice Thrown when POC buy collateral does not match OTC INPUT_TOKEN
+    error CollateralNotOTCInput();
+
+    /// @notice Thrown when OTC INPUT is ETH (only ERC20 input supported in this flow)
+    error OTCInputIsEth();
+
+    /// @notice Thrown when collateral balance is less than pocBuyParams.collateralAmount for OTC supply flow
+    error InsufficientCollateralBalance();
 
     // ============ Events ============
 
@@ -391,6 +410,11 @@ interface IRebalanceV2 {
         POCBuyParams[] calldata pocBuyParamsArray
     ) external;
 
+    /// @notice Admin OTC supply rebalancing (no delays)
+    /// @param otc OTCv2 supply contract
+    /// @param pocBuyParams POC buy parameters
+    function adminRebalanceSupplyOTC(IOTCv2 otc, POCBuyParams calldata pocBuyParams) external;
+
     /// @notice Publish action for delayed execution
     /// @dev Users can publish their action calldata which will be executable after DELAY
     /// @param actionData Future calldata with function selector and all parameters (including nonce if needed)
@@ -432,5 +456,12 @@ interface IRebalanceV2 {
         SwapParams[] calldata swapParamsArray,
         POCBuyParams[] calldata pocBuyParamsArray
     ) external;
+
+    /// @notice Execute published OTC supply rebalancing action
+    /// @dev Executes published action after delay and within execution window. OTC supply is only available via publish/execute.
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param otc OTCv2 supply contract
+    /// @param pocBuyParams POC buy parameters
+    function executePublishedRebalanceSupplyOTC(uint256 nonce, IOTCv2 otc, POCBuyParams calldata pocBuyParams) external;
 }
 
