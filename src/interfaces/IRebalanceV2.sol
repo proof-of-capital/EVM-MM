@@ -2,6 +2,7 @@
 pragma solidity 0.8.29;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./IOTCv2.sol";
 
 /**
  * @title IRebalanceV2 Interface
@@ -37,21 +38,25 @@ struct SwapParams {
  * @param pocContract Address of the POC contract
  * @param collateral Collateral token address to use for purchase
  * @param collateralAmount Amount of collateral tokens to spend
+ * @param minLaunchTokensOut Minimum launch tokens to receive (0 = no check); used only for first action in scenario
  */
 struct POCBuyParams {
     address pocContract;
     address collateral;
     uint256 collateralAmount;
+    uint256 minLaunchTokensOut;
 }
 
 /**
  * @notice Parameters for selling tokens to POC contract
  * @param pocContract Address of the POC contract
  * @param launchAmount Amount of launch tokens to sell
+ * @param minCollateralOut Minimum collateral to receive (0 = no check); used only for first action in scenario
  */
 struct POCSellParams {
     address pocContract;
     uint256 launchAmount;
+    uint256 minCollateralOut;
 }
 
 /**
@@ -132,8 +137,46 @@ interface IRebalanceV2 {
     /// @notice Thrown when trying to change Return wallet from unauthorized address
     error OnlyReturnWalletCanChange();
 
+    /// @notice Thrown when caller is not DAO
+    error OnlyDao();
+
+    /// @notice Thrown when caller is not admin
+    error OnlyAdmin();
+
+    /// @notice Thrown when action is already published (duplicate publish)
+    error ActionAlreadyPublished();
+
+    /// @notice Thrown when action is not published
+    error ActionNotPublished();
+
+    /// @notice Thrown when trying to execute action too early (before delay)
+    error ActionTooEarly();
+
+    /// @notice Thrown when action execution window has expired
+    error ActionExpired();
+
+    /// @notice Thrown when action has already been executed
+    error ActionAlreadyExecuted();
     /// @notice Thrown when trying to set DAO wallet but it is already set
     error DaoAlreadySet();
+
+    /// @notice Thrown when OTC contract address is zero or invalid
+    error InvalidOTC();
+
+    /// @notice Thrown when RebalanceV2 is not the admin of the OTC contract
+    error NotOTCAdmin();
+
+    /// @notice Thrown when OTC OUTPUT_TOKEN does not match RebalanceV2 launch token
+    error OTCOutputMismatch();
+
+    /// @notice Thrown when POC buy collateral does not match OTC INPUT_TOKEN
+    error CollateralNotOTCInput();
+
+    /// @notice Thrown when OTC INPUT is ETH (only ERC20 input supported in this flow)
+    error OTCInputIsEth();
+
+    /// @notice Thrown when collateral balance is less than pocBuyParams.collateralAmount for OTC supply flow
+    error InsufficientCollateralBalance();
 
     // ============ Events ============
 
@@ -169,6 +212,21 @@ interface IRebalanceV2 {
     /// @param newWallet New Return wallet address
     event ReturnWalletChanged(address indexed oldWallet, address indexed newWallet);
 
+    /// @notice Emitted when admin is set
+    /// @param oldAdmin Previous admin address
+    /// @param newAdmin New admin address
+    event AdminSet(address indexed oldAdmin, address indexed newAdmin);
+
+    /// @notice Emitted when action is published
+    /// @param user User who published the action
+    /// @param actionHash Hash of the published action
+    /// @param timestamp Publication timestamp
+    event ActionPublished(address indexed user, bytes32 indexed actionHash, uint256 timestamp);
+
+    /// @notice Emitted when action is executed
+    /// @param user User who executed the action
+    /// @param actionHash Hash of the executed action
+    event ActionExecuted(address indexed user, bytes32 indexed actionHash);
     /// @notice Emitted when DAO wallet is set (only when current DAO is zero)
     /// @param dao Address of the DAO wallet
     event DaoWalletSet(address indexed dao);
@@ -223,6 +281,20 @@ interface IRebalanceV2 {
     /// @return Minimum profit percentage in basis points (100 = 1%, 500 = 5%)
     function minProfitBps() external view returns (uint256);
 
+    /// @notice Returns the admin address
+    /// @return Admin address
+    function admin() external view returns (address);
+
+    /// @notice Returns the publication timestamp for an action hash
+    /// @param actionHash Action hash
+    /// @return Publication timestamp (0 if not published)
+    function publishedActions(bytes32 actionHash) external view returns (uint256);
+
+    /// @notice Returns whether an action has been executed
+    /// @param actionHash Action hash
+    /// @return true if executed, false otherwise
+    function executedActions(bytes32 actionHash) external view returns (bool);
+
     // ============ State-Changing Functions ============
 
     /// @notice Set withdraw lock for launch token (only owner)
@@ -269,43 +341,91 @@ interface IRebalanceV2 {
     /// @param amount Amount to withdraw
     function withdraw(address token, uint256 amount) external;
 
-    /// @notice LP to POC rebalancing
-    /// @dev Algorithm:
-    ///      1. Swap launch -> collateral(s) on DEX (multiple swaps)
-    ///      2. Buy launch from POC contract(s) using collateral(s)
-    ///      3. Check that launch balance increased (profit)
+    /// @notice Set admin address (only DAO can call)
+    /// @param newAdmin New admin address
+    function setAdmin(address newAdmin) external;
+
+    /// @notice Admin LP to POC rebalancing (no delays)
+    /// @dev Admin can execute rebalancing without any delays
     /// @param swapParamsArray Array of swap parameters for DEX swaps
     /// @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
     /// @param pocBuyParamsArray Array of POC buy parameters
-    function rebalanceLPtoPOC(
+    function adminRebalanceLPtoPOC(
         SwapParams[] calldata swapParamsArray,
         uint256[] calldata amountsIn,
         POCBuyParams[] calldata pocBuyParamsArray
     ) external;
 
-    /// @notice POC to LP rebalancing
-    /// @dev Algorithm:
-    ///      1. Sell launch to POC contract for collateral
-    ///      2. Buy launch for all received collateral in LP pool
-    ///      3. Check that in profit (launch balance increased)
+    /// @notice Admin POC to LP rebalancing (no delays)
+    /// @dev Admin can execute rebalancing without any delays
     /// @param pocSellParamsArray Array of POC sell parameters
     /// @param swapParamsArray Array of swap parameters for DEX swaps
-    function rebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
+    function adminRebalancePOCtoLP(POCSellParams[] calldata pocSellParamsArray, SwapParams[] calldata swapParamsArray)
         external;
 
-    /// @notice POC to LP to POC rebalancing
-    /// @dev Algorithm:
-    ///      1. Sell launch to POC contract for collateral
-    ///      2. Swap all received collateral to another collateral via specified path
-    ///      3. Buy launch from another POC contract using new collateral
-    ///      4. Check that in profit (launch balance increased)
+    /// @notice Admin POC to LP to POC rebalancing (no delays)
+    /// @dev Admin can execute rebalancing without any delays
     /// @param pocSellParamsArray Array of POC sell parameters
     /// @param swapParamsArray Array of swap parameters for DEX swaps
     /// @param pocBuyParamsArray Array of POC buy parameters
-    function rebalancePOCtoPOC(
+    function adminRebalancePOCtoPOC(
         POCSellParams[] calldata pocSellParamsArray,
         SwapParams[] calldata swapParamsArray,
         POCBuyParams[] calldata pocBuyParamsArray
     ) external;
+
+    /// @notice Admin OTC supply rebalancing (no delays)
+    /// @param otc OTCv2 supply contract
+    /// @param pocBuyParams POC buy parameters
+    function adminRebalanceSupplyOTC(IOTCv2 otc, POCBuyParams calldata pocBuyParams) external;
+
+    /// @notice Publish action for delayed execution
+    /// @dev Users can publish their action calldata which will be executable after DELAY
+    /// @param actionData Future calldata with function selector and all parameters (including nonce if needed)
+    function publishAction(bytes calldata actionData) external;
+
+    /// @notice Execute published LP to POC rebalancing action
+    /// @dev Executes published action after delay and within execution window
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    /// @param amountsIn Array of input amounts for each swap (must match swapParamsArray length)
+    /// @param pocBuyParamsArray Array of POC buy parameters
+    function executePublishedRebalanceLPtoPOC(
+        uint256 nonce,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external;
+
+    /// @notice Execute published POC to LP rebalancing action
+    /// @dev Executes published action after delay and within execution window
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param pocSellParamsArray Array of POC sell parameters
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    function executePublishedRebalancePOCtoLP(
+        uint256 nonce,
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray
+    ) external;
+
+    /// @notice Execute published POC to LP to POC rebalancing action
+    /// @dev Executes published action after delay and within execution window
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param pocSellParamsArray Array of POC sell parameters
+    /// @param swapParamsArray Array of swap parameters for DEX swaps
+    /// @param pocBuyParamsArray Array of POC buy parameters
+    function executePublishedRebalancePOCtoPOC(
+        uint256 nonce,
+        POCSellParams[] calldata pocSellParamsArray,
+        SwapParams[] calldata swapParamsArray,
+        POCBuyParams[] calldata pocBuyParamsArray
+    ) external;
+
+    /// @notice Execute published OTC supply rebalancing action
+    /// @dev Executes published action after delay and within execution window. OTC supply is only available via publish/execute.
+    /// @param nonce Nonce parameter (not used in logic, only for hash calculation)
+    /// @param otc OTCv2 supply contract
+    /// @param pocBuyParams POC buy parameters
+    function executePublishedRebalanceSupplyOTC(uint256 nonce, IOTCv2 otc, POCBuyParams calldata pocBuyParams) external;
 }
 

@@ -71,6 +71,8 @@ interface IProofOfCapital {
     error CannotDecreaseRoyalty();
     error CannotIncreaseRoyalty();
     error CannotBeSelf();
+    error ReturnWalletCannotBeOldContract();
+    error RoyaltyWalletCannotBeOldContract();
     error InvalidAmount();
     error UseDepositFunctionForOwners();
     error LockPeriodNotEnded();
@@ -83,21 +85,35 @@ interface IProofOfCapital {
     error NoTokensAvailableForBuyback();
     error InsufficientTokensForBuyback();
     error InsufficientSoldTokens();
-    error LockIsActive();
+    error TradingIsActive();
     error OldContractAddressZero();
     error OldContractAddressConflict();
     error InvalidDAOAddress();
+    error DAOAlreadySet();
     error InsufficientUnaccountedCollateralBalance();
     error InsufficientUnaccountedOffsetBalance();
     error InsufficientUnaccountedOffsetTokenBalance();
     error UnaccountedOffsetBalanceNotSet();
     error ContractAlreadyInitialized();
+    error ContractNotInitialized();
     error ProfitBeforeTrendChangeMustBePositive();
     error UseReturnWalletFunction();
     error OnlyReturnWallet();
     error InvalidTokenForWithdrawal();
     error InsufficientLaunchAvailable();
     error ExcessCollateralAmount();
+    error InsufficientCollateralTokenValue();
+    error InvalidLaunchTokenAddress();
+    error InvalidMarketMakerAddress();
+    error InvalidReturnWalletAddress();
+    error InvalidRoyaltyWalletAddress();
+    error InvalidCollateralTokenAddress();
+    error InvalidInitialOwner();
+    error InvalidLockEndTime();
+    error InvalidFirstLevelTokenQuantity();
+    error InvalidProfitPercentage();
+    error CurrentStepEarnedExceedsCurrentStep();
+    error BelowMinimumOutput();
 
     // Events
     event OldContractRegistered(address indexed oldContractAddress);
@@ -110,11 +126,17 @@ interface IProofOfCapital {
     event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
     event TokensSold(address indexed seller, uint256 amount, uint256 payout);
     event DeferredWithdrawalScheduled(address indexed recipient, uint256 amount, uint256 executeTime);
+    event DeferredWithdrawalToggled(bool canWithdrawal);
+    event LaunchDeferredWithdrawalCancelled(address indexed cancelledBy);
+    event LaunchDeferredWithdrawalConfirmed(address indexed recipient, uint256 amount);
+    event CollateralDeferredWithdrawalCancelled(address indexed cancelledBy);
+    event LaunchDeposited(address indexed depositor, uint256 amount);
+    event TokensSoldReturnWallet(address indexed seller, uint256 amount, uint256 collateralPaid);
     event ProfitModeChanged(bool profitInTime);
     event CommissionChanged(uint256 newCommission);
     event ReserveOwnerChanged(address indexed newReserveOwner);
     event RoyaltyWalletChanged(address indexed newRoyaltyWalletAddress);
-    event ReturnWalletChanged(address indexed newReturnWalletAddress);
+    event ReturnWalletChanged(address indexed newReturnWalletAddress, bool isReturnWallet);
     event ProfitPercentageChanged(uint256 newRoyaltyProfitPercentage);
     event CollateralDeferredWithdrawalConfirmed(address indexed recipient, uint256 amount);
     event AllTokensWithdrawn(address indexed owner, uint256 amount);
@@ -123,6 +145,7 @@ interface IProofOfCapital {
     event RoyaltyNotificationFailed(address indexed royaltyAddress, bytes reason);
     event TokenWithdrawn(address indexed token, address indexed recipient, uint256 amount);
     event CollateralDeposited(uint256 amount);
+    event OwnerShareUpgraded(uint256 amount);
 
     // Struct for initialization parameters to avoid "Stack too deep" error
     struct InitParams {
@@ -132,8 +155,8 @@ interface IProofOfCapital {
         address returnWalletAddress;
         address royaltyWalletAddress;
         uint256 lockEndTime;
-        uint256 initialPricePerToken;
-        uint256 firstLevelTokenQuantity;
+        uint256 initialPricePerLaunchToken;
+        uint256 firstLevelLaunchTokenQuantity;
         uint256 priceIncrementMultiplier;
         int256 levelIncreaseMultiplier;
         uint256 trendChangeStep;
@@ -146,6 +169,8 @@ interface IProofOfCapital {
         address[] oldContractAddresses; // Array of old contract addresses
         uint256 profitBeforeTrendChange; // Profit percentage before trend change
         address daoAddress; // DAO address for governance
+        address collateralTokenOracle;
+        int256 collateralTokenMinOracleValue;
     }
 
     // Management functions
@@ -165,11 +190,13 @@ interface IProofOfCapital {
     function registerOldContract(address oldContractAddr) external;
 
     // Trading functions
-    function buyLaunchTokens(uint256 amount) external;
+    function buyLaunchTokens(uint256 amount, uint256 minLaunchTokensOut) external;
     function depositCollateral(uint256 amount) external;
     function depositLaunch(uint256 amount) external;
-    function sellLaunchTokens(uint256 amount) external;
+    function sellLaunchTokens(uint256 amount, uint256 minCollateralOut) external;
     function sellLaunchTokensReturnWallet(uint256 amount) external;
+    function sellLaunchTokensDao(uint256 amount) external;
+    function upgradeOwnerShare() external;
 
     // Deferred withdrawals
     function launchDeferredWithdrawal(address recipientAddress, uint256 amount) external;
@@ -197,6 +224,7 @@ interface IProofOfCapital {
     function remainingSeconds() external view returns (uint256);
     function tradingOpportunity() external view returns (bool);
     function launchAvailable() external view returns (uint256);
+    function isCollateralTokenOracleValid() external view returns (bool);
 
     // State variables getters
     function isActive() external view returns (bool);
@@ -209,8 +237,8 @@ interface IProofOfCapital {
     function lockEndTime() external view returns (uint256);
     function controlDay() external view returns (uint256);
     function controlPeriod() external view returns (uint256);
-    function initialPricePerToken() external view returns (uint256);
-    function firstLevelTokenQuantity() external view returns (uint256);
+    function initialPricePerLaunchToken() external view returns (uint256);
+    function firstLevelLaunchTokenQuantity() external view returns (uint256);
     function currentPrice() external view returns (uint256);
     function quantityLaunchPerLevel() external view returns (uint256);
     function remainderOfStep() external view returns (uint256);
@@ -221,12 +249,12 @@ interface IProofOfCapital {
     function levelDecreaseMultiplierAfterTrend() external view returns (int256);
     function profitPercentage() external view returns (uint256);
     function royaltyProfitPercent() external view returns (uint256);
-    function creatorProfitPercent() external view returns (uint256);
     function profitBeforeTrendChange() external view returns (uint256);
     function totalLaunchSold() external view returns (uint256);
     function contractCollateralBalance() external view returns (uint256);
     function launchBalance() external view returns (uint256);
     function launchTokensEarned() external view returns (uint256);
+    function ownerEarnedLaunchTokens() external view returns (uint256);
     function currentStepEarned() external view returns (uint256);
     function remainderOfStepEarned() external view returns (uint256);
     function quantityLaunchPerLevelEarned() external view returns (uint256);
@@ -253,4 +281,6 @@ interface IProofOfCapital {
     function unaccountedReturnBuybackBalance() external view returns (uint256);
     function isInitialized() external view returns (bool);
     function isFirstLaunchDeposit() external view returns (bool);
+    function collateralTokenOracle() external view returns (address);
+    function collateralTokenMinOracleValue() external view returns (int256);
 }

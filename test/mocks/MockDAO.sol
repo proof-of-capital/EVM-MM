@@ -7,6 +7,8 @@ import "../../src/interfaces/DataTypes.sol";
 contract MockDAO {
     DataTypes.Stage private _currentStage;
     bool private _shouldRevert;
+    bool private _pocIndexReverts;
+    bool private _getPOCContractReverts;
 
     // POC contracts mapping
     mapping(address => uint256) private _pocIndex;
@@ -46,6 +48,22 @@ contract MockDAO {
     }
 
     /**
+     * @notice Set whether pocIndex should revert (for testing outer catch in _isPOCContract)
+     * @param value true to make pocIndex revert, false otherwise
+     */
+    function setPocIndexReverts(bool value) external {
+        _pocIndexReverts = value;
+    }
+
+    /**
+     * @notice Set whether getPOCContract should revert (for testing inner catch in _isPOCContract)
+     * @param value true to make getPOCContract revert, false otherwise
+     */
+    function setGetPOCContractReverts(bool value) external {
+        _getPOCContractReverts = value;
+    }
+
+    /**
      * @notice Add a POC contract for testing
      * @param pocContract POC contract address
      * @param collateralToken Collateral token address
@@ -72,6 +90,7 @@ contract MockDAO {
      * @return Index of the POC contract (0 if not found)
      */
     function pocIndex(address pocContract) external view returns (uint256) {
+        if (_pocIndexReverts) revert("pocIndex reverted");
         return _pocIndex[pocContract];
     }
 
@@ -81,6 +100,7 @@ contract MockDAO {
      * @return POC contract info
      */
     function getPOCContract(uint256 index) external view returns (DataTypes.POCInfo memory) {
+        if (_getPOCContractReverts) revert("getPOCContract reverted");
         require(index < _pocContracts.length, "Invalid index");
         return _pocContracts[index];
     }

@@ -125,13 +125,17 @@ contract RebalanceV2UniswapV3Test is Test {
         allowances[8] =
             AllowanceParams({token: address(launchToken), spender: address(poc4), amount: type(uint256).max});
         rebalanceV2.increaseAllowanceForSpenders(allowances);
+
+        // Set test contract as admin so tests can call adminRebalance* (rebalance only via admin or publish/execute)
+        vm.prank(address(mockDao));
+        rebalanceV2.setAdmin(owner);
     }
 
     function test_rebalanceLPtoPOC_Success() public {
         // Record initial balances
         uint256 initialLaunchToken = launchToken.balanceOf(address(rebalanceV2));
 
-        // Note: rebalanceLPtoPOC uses entire launchToken balance for each swap
+        // Note: adminRebalanceLPtoPOC uses entire launchToken balance for each swap
         // So we use single swap for simplicity
         SwapParams[] memory swapParamsArray = new SwapParams[](1);
 
@@ -151,7 +155,8 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1e24 // Use all collateral received from swap
+            collateralAmount: 1e24, // Use all collateral received from swap
+            minLaunchTokensOut: 0
         });
 
         // Setup swap rate to return more collateral (1.1:1)
@@ -172,7 +177,7 @@ contract RebalanceV2UniswapV3Test is Test {
         amountsIn[0] = initialLaunchToken; // Use entire balance
 
         // Execute rebalance
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         // Check final balances
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
@@ -206,8 +211,8 @@ contract RebalanceV2UniswapV3Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
-        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18, minCollateralOut: 0});
 
         // Prepare swap params (collateral -> launchToken)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -245,7 +250,7 @@ contract RebalanceV2UniswapV3Test is Test {
         // Note: allowances for collateral3 and collateral4 are already set in setUp()
 
         // Execute rebalance
-        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
 
         // Check final balances
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
@@ -266,7 +271,8 @@ contract RebalanceV2UniswapV3Test is Test {
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
         pocSellParamsArray[0] = POCSellParams({
             pocContract: address(poc3),
-            launchAmount: 3000e18 // Sell large amount
+            launchAmount: 3000e18, // Sell large amount
+            minCollateralOut: 0
         });
 
         // Prepare swap params (collateral -> launchToken)
@@ -291,7 +297,7 @@ contract RebalanceV2UniswapV3Test is Test {
 
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
-        rebalanceV2.rebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
+        rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
     function test_rebalancePOCtoPOC_Success() public {
@@ -303,8 +309,8 @@ contract RebalanceV2UniswapV3Test is Test {
 
         // Prepare POC sell params
         POCSellParams[] memory pocSellParamsArray = new POCSellParams[](2);
-        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18});
-        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18});
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc3), launchAmount: 1500e18, minCollateralOut: 0});
+        pocSellParamsArray[1] = POCSellParams({pocContract: address(poc4), launchAmount: 1500e18, minCollateralOut: 0});
 
         // Prepare swap params (collateral -> collateral)
         SwapParams[] memory swapParamsArray = new SwapParams[](2);
@@ -342,12 +348,14 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1650e18 // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            collateralAmount: 1650e18, // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            minLaunchTokensOut: 0
         });
         pocBuyParamsArray[1] = POCBuyParams({
             pocContract: address(poc2),
             collateral: address(collateral2),
-            collateralAmount: 1650e18 // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            collateralAmount: 1650e18, // Use 1.65e21 collateral, will get 1.815e21 launchToken
+            minLaunchTokensOut: 0
         });
 
         // Setup swap rates
@@ -368,7 +376,7 @@ contract RebalanceV2UniswapV3Test is Test {
         // Note: allowances for collateral3 and collateral4 are already set in setUp()
 
         // Execute rebalance
-        rebalanceV2.rebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
+        rebalanceV2.adminRebalancePOCtoPOC(pocSellParamsArray, swapParamsArray, pocBuyParamsArray);
 
         // Check final balances
         uint256 finalLaunchToken = launchToken.balanceOf(address(rebalanceV2));
@@ -403,7 +411,8 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1e24 // Use all collateral received from swap
+            collateralAmount: 1e24, // Use all collateral received from swap
+            minLaunchTokensOut: 0
         });
 
         // Setup swap rate to return more collateral (1.1:1)
@@ -419,7 +428,7 @@ contract RebalanceV2UniswapV3Test is Test {
         uint256[] memory amountsIn = new uint256[](1);
         amountsIn[0] = initialLaunchToken; // Use entire balance
 
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
 
         uint256 profit = launchToken.balanceOf(address(rebalanceV2)) - initialLaunchToken;
         assertGt(profit, 0, "Should have profit");
@@ -485,7 +494,8 @@ contract RebalanceV2UniswapV3Test is Test {
         pocBuyParamsArray[0] = POCBuyParams({
             pocContract: address(poc1),
             collateral: address(collateral1),
-            collateralAmount: 1e24 // Not used, code uses balanceOf
+            collateralAmount: 1e24, // Not used, code uses balanceOf
+            minLaunchTokensOut: 0
         });
         collateral1.mint(address(router), 2e24); // Mint enough collateral
         // Mint launch tokens to POC contract for buy operations
@@ -499,7 +509,7 @@ contract RebalanceV2UniswapV3Test is Test {
 
         // Should revert because launch token balance doesn't increase
         vm.expectRevert(IRebalanceV2.LaunchTokenBalanceNotIncreased.selector);
-        rebalanceV2.rebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
     }
 }
 
