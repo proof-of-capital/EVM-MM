@@ -1245,6 +1245,38 @@ contract RebalanceV2Test is Test {
         rebalanceV2.adminRebalancePOCtoLP(pocSellParamsArray, swapParamsArray);
     }
 
+    /// @dev Test require(swapParams.data.length >= 20, InvalidV3Path()) in _getTokenOut (RebalanceV2.sol L744).
+    /// adminRebalanceLPtoPOC calls _getTokenOut first (no _getTokenIn before it), so this path hits the check in _getTokenOut.
+    function test_rebalanceLPtoPOC_RevertIfInvalidV3Path_DataTooShort() public {
+        launchToken.mint(address(rebalanceV2), 5000e18);
+
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        // V3 path with less than 20 bytes triggers InvalidV3Path in _getTokenOut
+        bytes memory shortPath = new bytes(19);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV3,
+            routerAddress: address(router),
+            path: new address[](0),
+            data: shortPath,
+            amountOutMinimum: 900e18
+        });
+
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 1000e18;
+
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 1e24,
+            minLaunchTokensOut: 0
+        });
+        launchToken.mint(address(poc1), 2e24);
+
+        vm.expectRevert(IRebalanceV2.InvalidV3Path.selector);
+        rebalanceV2.adminRebalanceLPtoPOC(swapParamsArray, amountsIn, pocBuyParamsArray);
+    }
+
     function test_withdraw_LaunchTokenWhenDAOUnavailable() public {
         // Set DAO to revert (simulating unavailable DAO)
         mockDao.setShouldRevert(true);
