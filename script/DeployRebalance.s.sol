@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.29;
+pragma solidity 0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
 import {Rebalance} from "../src/Rebalance.sol";
