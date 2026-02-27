@@ -91,6 +91,8 @@ interface IOTCv2 {
     function withdrawInput(uint256 amount) external;
     function withdrawOutput(uint256 amount) external;
     function supplyOutput() external;
+    /// @notice Admin supplies OUTPUT tokens to OTC; OTC checks that received amount >= expectedMinAmount
+    function receiveSupplyFromAdmin(uint256 expectedMinAmount) external;
     function proposeDaoAccount(FarmWithdrawData calldata _withdrawData) external;
     function voteYes() external;
     function voteNo() external;

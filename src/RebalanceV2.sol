@@ -541,6 +541,132 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
+     * @notice OTC supply via LP (internal): supply LAUNCH to OTC, receive INPUT, swap INPUT→LAUNCH on DEX
+     * @dev Launch→Collateral direction; conversion via DEX only
+     * @param otc OTCv2 supply contract (this contract must be its admin)
+     * @param swapParamsArray Swap parameters (path collateral → launch)
+     * @param amountsIn Input amounts for each swap
+     */
+    function _rebalanceSupplyOTCViaLP(IOTCv2 otc, SwapParams[] calldata swapParamsArray, uint256[] calldata amountsIn)
+        internal
+    {
+        require(address(otc) != address(0), InvalidOTC());
+        require(otc.ADMIN_ADDRESS() == address(this), NotOTCAdmin());
+        require(otc.OUTPUT_TOKEN() == address(launchToken), OTCOutputMismatch());
+        require(otc.INPUT_TOKEN() != address(0), OTCInputIsEth());
+        address collateralToken = otc.INPUT_TOKEN();
+
+        (, uint256 outputAmount) = otc.supplies(otc.currentSupplyIndex());
+        uint256 usedLaunchTokens = outputAmount;
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+
+        launchToken.safeIncreaseAllowance(address(otc), usedLaunchTokens);
+        otc.supplyOutput();
+
+        uint256 collateralBalanceBefore = IERC20(collateralToken).balanceOf(address(this));
+        require(swapParamsArray.length == amountsIn.length, InvalidPath());
+        uint256 sumOfAmountsIn = 0;
+        for (uint256 i = 0; i < swapParamsArray.length; i++) {
+            sumOfAmountsIn += amountsIn[i];
+            require(_getTokenIn(swapParamsArray[i]) == collateralToken, InvalidCollateralToken());
+            require(_getTokenOut(swapParamsArray[i]) == address(launchToken), InvalidLaunchToken());
+            _swap(amountsIn[i], swapParamsArray[i]);
+        }
+        require(sumOfAmountsIn == collateralBalanceBefore, InvalidCollateralToken());
+
+        _checkProfitAndDistribute(initialLaunchBalance, usedLaunchTokens);
+    }
+
+    /**
+     * @notice Supply to OTC from collateral via POC (internal): withdraw INPUT from OTC, buy LAUNCH on POC, send LAUNCH to OTC
+     * @dev Collateral→Launch direction; conversion via POC only
+     * @param otc OTCv2 contract (this contract must be its admin)
+     * @param collateralAmount Amount of INPUT to withdraw from OTC
+     * @param pocBuyParamsArray POC buy parameters (collateral must equal otc.INPUT_TOKEN())
+     * @param minLaunchToSendToOtc Minimum launch tokens to send to OTC
+     */
+    function _supplyToOTCFromCollateralViaPOC(
+        IOTCv2 otc,
+        uint256 collateralAmount,
+        POCBuyParams[] calldata pocBuyParamsArray,
+        uint256 minLaunchToSendToOtc
+    ) internal {
+        require(address(otc) != address(0), InvalidOTC());
+        require(otc.ADMIN_ADDRESS() == address(this), NotOTCAdmin());
+        require(otc.OUTPUT_TOKEN() == address(launchToken), OTCOutputMismatch());
+        require(otc.INPUT_TOKEN() != address(0), OTCInputIsEth());
+
+        otc.withdrawInput(collateralAmount);
+        address collateralToken = otc.INPUT_TOKEN();
+
+        uint256 launchBalanceBefore = launchToken.balanceOf(address(this));
+        for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
+            require(pocBuyParamsArray[i].collateral == collateralToken, CollateralNotOTCInput());
+            IERC20(collateralToken)
+                .safeIncreaseAllowance(pocBuyParamsArray[i].pocContract, pocBuyParamsArray[i].collateralAmount);
+            uint256 minOut = (i == 0) ? pocBuyParamsArray[i].minLaunchTokensOut : 0;
+            IProofOfCapital(pocBuyParamsArray[i].pocContract)
+                .buyLaunchTokens(pocBuyParamsArray[i].collateralAmount, minOut);
+        }
+
+        uint256 totalLaunchReceived = launchToken.balanceOf(address(this)) - launchBalanceBefore;
+        require(totalLaunchReceived >= minLaunchToSendToOtc, InsufficientLaunchForOTC());
+        uint256 profit = totalLaunchReceived - minLaunchToSendToOtc;
+        if (profit > 0) {
+            _distributeProfitInternal(profit);
+        }
+        launchToken.safeTransfer(address(otc), minLaunchToSendToOtc);
+        otc.receiveSupplyFromAdmin(minLaunchToSendToOtc);
+    }
+
+    /**
+     * @notice Supply to OTC from collateral via LP (internal): withdraw INPUT from OTC, swap to LAUNCH on DEX, send LAUNCH to OTC
+     * @dev Collateral→Launch direction; conversion via DEX only
+     * @param otc OTCv2 contract (this contract must be its admin)
+     * @param collateralAmount Amount of INPUT to withdraw from OTC
+     * @param swapParamsArray Swap parameters (collateral → launch)
+     * @param amountsIn Input amounts per swap
+     * @param minLaunchToSendToOtc Minimum launch tokens to send to OTC
+     */
+    function _supplyToOTCFromCollateralViaLP(
+        IOTCv2 otc,
+        uint256 collateralAmount,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        uint256 minLaunchToSendToOtc
+    ) internal {
+        require(address(otc) != address(0), InvalidOTC());
+        require(otc.ADMIN_ADDRESS() == address(this), NotOTCAdmin());
+        require(otc.OUTPUT_TOKEN() == address(launchToken), OTCOutputMismatch());
+        require(otc.INPUT_TOKEN() != address(0), OTCInputIsEth());
+        address collateralToken = otc.INPUT_TOKEN();
+
+        otc.withdrawInput(collateralAmount);
+
+        require(swapParamsArray.length == amountsIn.length, InvalidPath());
+        uint256 sumOfAmountsIn = 0;
+        for (uint256 i = 0; i < amountsIn.length; i++) {
+            sumOfAmountsIn += amountsIn[i];
+        }
+        require(sumOfAmountsIn == collateralAmount, InvalidCollateralToken());
+        uint256 launchBalanceBefore = launchToken.balanceOf(address(this));
+        for (uint256 i = 0; i < swapParamsArray.length; i++) {
+            require(_getTokenIn(swapParamsArray[i]) == collateralToken, InvalidCollateralToken());
+            require(_getTokenOut(swapParamsArray[i]) == address(launchToken), InvalidLaunchToken());
+            _swap(amountsIn[i], swapParamsArray[i]);
+        }
+
+        uint256 totalLaunchReceived = launchToken.balanceOf(address(this)) - launchBalanceBefore;
+        require(totalLaunchReceived >= minLaunchToSendToOtc, InsufficientLaunchForOTC());
+        uint256 profit = totalLaunchReceived - minLaunchToSendToOtc;
+        if (profit > 0) {
+            _distributeProfitInternal(profit);
+        }
+        launchToken.safeTransfer(address(otc), minLaunchToSendToOtc);
+        otc.receiveSupplyFromAdmin(minLaunchToSendToOtc);
+    }
+
+    /**
      * @notice Admin LP to POC rebalancing (no delays)
      * @dev Admin can execute rebalancing without any delays
      * @param swapParamsArray Array of swap parameters for DEX swaps
@@ -590,6 +716,70 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
      */
     function adminRebalanceSupplyOTC(IOTCv2 otc, POCBuyParams calldata pocBuyParams) external override onlyAdmin {
         _rebalanceSupplyOTC(otc, pocBuyParams);
+    }
+
+    /**
+     * @notice Admin OTC supply via LP: supply LAUNCH to OTC, receive INPUT, swap INPUT→LAUNCH on DEX
+     * @param otc OTCv2 supply contract
+     * @param swapParamsArray Swap parameters (collateral → launch)
+     * @param amountsIn Input amounts per swap
+     */
+    function adminRebalanceSupplyOTCViaLP(
+        IOTCv2 otc,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn
+    ) external override onlyAdmin {
+        _rebalanceSupplyOTCViaLP(otc, swapParamsArray, amountsIn);
+    }
+
+    /**
+     * @notice Admin supply to OTC from collateral via POC: withdraw INPUT from OTC, buy LAUNCH on POC, send LAUNCH to OTC
+     * @param otc OTCv2 supply contract
+     * @param collateralAmount Amount of collateral to withdraw from OTC
+     * @param pocBuyParamsArray POC buy parameters (collateral = otc.INPUT_TOKEN())
+     * @param minLaunchToSendToOtc Minimum launch tokens to send to OTC (slippage)
+     */
+    function adminSupplyToOTCFromCollateralViaPOC(
+        IOTCv2 otc,
+        uint256 collateralAmount,
+        POCBuyParams[] calldata pocBuyParamsArray,
+        uint256 minLaunchToSendToOtc
+    ) external override onlyAdmin {
+        _supplyToOTCFromCollateralViaPOC(otc, collateralAmount, pocBuyParamsArray, minLaunchToSendToOtc);
+    }
+
+    /**
+     * @notice Admin supply to OTC from collateral via LP: withdraw INPUT from OTC, swap to LAUNCH on DEX, send LAUNCH to OTC
+     * @param otc OTCv2 supply contract
+     * @param collateralAmount Amount of collateral to withdraw from OTC
+     * @param swapParamsArray Swap parameters (collateral → launch)
+     * @param amountsIn Input amounts per swap
+     * @param minLaunchToSendToOtc Minimum launch tokens to send to OTC (slippage)
+     */
+    function adminSupplyToOTCFromCollateralViaLP(
+        IOTCv2 otc,
+        uint256 collateralAmount,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        uint256 minLaunchToSendToOtc
+    ) external override onlyAdmin {
+        _supplyToOTCFromCollateralViaLP(otc, collateralAmount, swapParamsArray, amountsIn, minLaunchToSendToOtc);
+    }
+
+    /**
+     * @notice Admin buyback launch tokens from OTC (sends collateral to OTC, receives launch to this contract)
+     * @param otc OTCv2 contract
+     * @param collateralAmount Amount of INPUT (collateral) to spend on buyback
+     */
+    function adminBuybackFromOTC(IOTCv2 otc, uint256 collateralAmount) external override onlyAdmin {
+        require(address(otc) != address(0), InvalidOTC());
+        require(otc.ADMIN_ADDRESS() == address(this), NotOTCAdmin());
+        require(otc.OUTPUT_TOKEN() == address(launchToken), OTCOutputMismatch());
+        require(otc.INPUT_TOKEN() != address(0), OTCInputIsEth());
+        address inputToken = otc.INPUT_TOKEN();
+        require(IERC20(inputToken).balanceOf(address(this)) >= collateralAmount, InsufficientCollateralBalance());
+        IERC20(inputToken).safeIncreaseAllowance(address(otc), collateralAmount);
+        otc.buybackWithToken(collateralAmount);
     }
 
     /**

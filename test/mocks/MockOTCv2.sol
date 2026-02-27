@@ -144,12 +144,23 @@ contract MockOTCv2 is IOTCv2 {
         revert("MockOTCv2: not implemented");
     }
 
-    function withdrawInput(uint256) external pure {
-        revert("MockOTCv2: not implemented");
+    /// @dev Admin withdraws INPUT_TOKEN from this contract to msg.sender
+    function withdrawInput(uint256 amount) external {
+        require(msg.sender == _adminAddress, "MockOTCv2: only admin");
+        if (amount != 0 && _inputToken != address(0)) {
+            IERC20(_inputToken).safeTransfer(msg.sender, amount);
+        }
     }
 
     function withdrawOutput(uint256) external pure {
         revert("MockOTCv2: not implemented");
+    }
+
+    /// @dev Admin must have transferred OUTPUT_TOKEN to this contract before calling. Checks balance >= expectedMinAmount.
+    function receiveSupplyFromAdmin(uint256 expectedMinAmount) external {
+        require(msg.sender == _adminAddress, "MockOTCv2: only admin");
+        uint256 received = IERC20(_outputToken).balanceOf(address(this));
+        require(received >= expectedMinAmount, "MockOTCv2: insufficient output received");
     }
 
     function proposeDaoAccount(FarmWithdrawData calldata) external pure {
@@ -168,8 +179,14 @@ contract MockOTCv2 is IOTCv2 {
         revert("MockOTCv2: not implemented");
     }
 
-    function buybackWithToken(uint256) external pure {
-        revert("MockOTCv2: not implemented");
+    /// @dev Mock: pull INPUT from caller, send OUTPUT to caller (1:1). Mock must hold OUTPUT tokens.
+    function buybackWithToken(uint256 amount) external {
+        if (amount != 0 && _inputToken != address(0)) {
+            IERC20(_inputToken).safeTransferFrom(msg.sender, address(this), amount);
+        }
+        if (amount != 0 && _outputToken != address(0)) {
+            IERC20(_outputToken).safeTransfer(msg.sender, amount);
+        }
     }
 
     function buybackWithEth() external payable {

@@ -178,6 +178,9 @@ interface IRebalanceV2 {
     /// @notice Thrown when collateral balance is less than pocBuyParams.collateralAmount for OTC supply flow
     error InsufficientCollateralBalance();
 
+    /// @notice Thrown when total launch received is less than minLaunchToSendToOtc (Collateral→Launch OTC flow)
+    error InsufficientLaunchForOTC();
+
     // ============ Events ============
 
     /// @notice Emitted when withdraw lock is updated
@@ -378,6 +381,47 @@ interface IRebalanceV2 {
     /// @param otc OTCv2 supply contract
     /// @param pocBuyParams POC buy parameters
     function adminRebalanceSupplyOTC(IOTCv2 otc, POCBuyParams calldata pocBuyParams) external;
+
+    /// @notice Admin OTC supply via LP: supply LAUNCH to OTC, receive INPUT, swap INPUT→LAUNCH on DEX
+    /// @param otc OTCv2 supply contract
+    /// @param swapParamsArray Swap parameters (collateral → launch)
+    /// @param amountsIn Input amounts per swap
+    function adminRebalanceSupplyOTCViaLP(
+        IOTCv2 otc,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn
+    ) external;
+
+    /// @notice Admin supply to OTC from collateral via POC: withdraw INPUT from OTC, buy LAUNCH on POC, send LAUNCH to OTC
+    /// @param otc OTCv2 supply contract
+    /// @param collateralAmount Amount of collateral to withdraw from OTC
+    /// @param pocBuyParamsArray POC buy parameters (collateral = otc.INPUT_TOKEN())
+    /// @param minLaunchToSendToOtc Minimum launch tokens to send to OTC (slippage)
+    function adminSupplyToOTCFromCollateralViaPOC(
+        IOTCv2 otc,
+        uint256 collateralAmount,
+        POCBuyParams[] calldata pocBuyParamsArray,
+        uint256 minLaunchToSendToOtc
+    ) external;
+
+    /// @notice Admin supply to OTC from collateral via LP: withdraw INPUT from OTC, swap to LAUNCH on DEX, send LAUNCH to OTC
+    /// @param otc OTCv2 supply contract
+    /// @param collateralAmount Amount of collateral to withdraw from OTC
+    /// @param swapParamsArray Swap parameters (collateral → launch)
+    /// @param amountsIn Input amounts per swap
+    /// @param minLaunchToSendToOtc Minimum launch tokens to send to OTC (slippage)
+    function adminSupplyToOTCFromCollateralViaLP(
+        IOTCv2 otc,
+        uint256 collateralAmount,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        uint256 minLaunchToSendToOtc
+    ) external;
+
+    /// @notice Admin buyback launch tokens from OTC (sends collateral to OTC, receives launch to this contract)
+    /// @param otc OTCv2 contract
+    /// @param collateralAmount Amount of INPUT (collateral) to spend on buyback
+    function adminBuybackFromOTC(IOTCv2 otc, uint256 collateralAmount) external;
 
     /// @notice Publish action for delayed execution
     /// @dev Users can publish their action calldata which will be executable after DELAY
