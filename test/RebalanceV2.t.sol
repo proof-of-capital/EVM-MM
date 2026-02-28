@@ -1009,6 +1009,185 @@ contract RebalanceV2Test is Test {
         assertEq(collateral1.balanceOf(address(mockOtc)), collateralAmount, "OTC should hold collateral");
     }
 
+    // --- adminRebalanceOTCtoOTC (direct, same INPUT_TOKEN) tests ---
+
+    function test_adminRebalanceOTCtoOTC_RevertIfNotAdmin() public {
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 100e18, 100e18);
+        otcTarget.setSupply(0, 0, 0);
+        collateral1.mint(address(otcSource), 100e18);
+        launchToken.mint(address(otcTarget), 100e18);
+        address nonAdmin = address(0x456);
+        vm.prank(nonAdmin);
+        vm.expectRevert(IRebalanceV2.OnlyAdmin.selector);
+        rebalanceV2.adminRebalanceOTCtoOTC(IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), 100e18);
+    }
+
+    function test_adminRebalanceOTCtoOTC_Success() public {
+        uint256 launchAmount = 100e18;
+        uint256 collateralFromSource = 110e18; // source gives 110 collateral for 100 launch (arbitrage)
+        uint256 buybackAmount = 110e18;
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, collateralFromSource, launchAmount);
+        collateral1.mint(address(otcSource), collateralFromSource);
+        launchToken.mint(address(otcTarget), buybackAmount);
+        uint256 launchBefore = launchToken.balanceOf(address(rebalanceV2));
+        rebalanceV2.adminRebalanceOTCtoOTC(IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), buybackAmount);
+        uint256 launchAfter = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(launchAfter, launchBefore, "Launch balance should increase");
+        assertEq(launchAfter - launchBefore, 10e18, "Profit should be 10 LAUNCH");
+    }
+
+    function test_adminRebalanceOTCtoOTC_RevertWhenSameOTC() public {
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 100e18, 100e18);
+        collateral1.mint(address(otcSource), 100e18);
+        launchToken.mint(address(otcSource), 100e18);
+        vm.expectRevert(IRebalanceV2.InvalidOTC.selector);
+        rebalanceV2.adminRebalanceOTCtoOTC(IOTCv2(address(otcSource)), IOTCv2(address(otcSource)), 100e18);
+    }
+
+    function test_adminRebalanceOTCtoOTC_RevertWhenDifferentInputTokens() public {
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral2), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 100e18, 100e18);
+        collateral1.mint(address(otcSource), 100e18);
+        vm.expectRevert(IRebalanceV2.InvalidCollateralToken.selector);
+        rebalanceV2.adminRebalanceOTCtoOTC(IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), 100e18);
+    }
+
+    function test_adminRebalanceOTCtoOTC_RevertWhenInsufficientCollateralForBuyback() public {
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 50e18, 100e18); // only 50 collateral out for 100 launch
+        collateral1.mint(address(otcSource), 50e18);
+        launchToken.mint(address(otcTarget), 100e18);
+        vm.expectRevert(IRebalanceV2.InsufficientCollateralBalance.selector);
+        rebalanceV2.adminRebalanceOTCtoOTC(IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), 100e18);
+    }
+
+    // --- adminRebalanceOTCtoOTCViaPOC tests ---
+
+    function test_adminRebalanceOTCtoOTCViaPOC_RevertIfNotAdmin() public {
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral2), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 100e18, 100e18);
+        collateral1.mint(address(otcSource), 100e18);
+        launchToken.mint(address(poc2), 100e18);
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(poc1),
+            collateral: address(collateral1),
+            collateralAmount: 100e18,
+            minLaunchTokensOut: 0
+        });
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] = POCSellParams({pocContract: address(poc2), launchAmount: 100e18, minCollateralOut: 0});
+        vm.prank(address(0x456));
+        vm.expectRevert(IRebalanceV2.OnlyAdmin.selector);
+        rebalanceV2.adminRebalanceOTCtoOTCViaPOC(
+            IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), pocBuyParamsArray, pocSellParamsArray, 100e18
+        );
+    }
+
+    function test_adminRebalanceOTCtoOTCViaPOC_Success() public {
+        uint256 launchAmount = 100e18;
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral2), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 100e18, launchAmount);
+        collateral1.mint(address(otcSource), 100e18);
+        // Use fresh POC mocks to avoid allowance overflow (setUp already set max allowance for poc1/poc2)
+        MockPOC pocBuy = new MockPOC(address(launchToken), address(collateral1));
+        MockPOC pocSell = new MockPOC(address(launchToken), address(collateral2));
+        launchToken.mint(address(pocBuy), 110e18);
+        launchToken.mint(address(pocSell), 110e18);
+        collateral2.mint(address(pocSell), 121e18);
+        launchToken.mint(address(otcTarget), 121e18);
+        // Allow pocSell to pull LAUNCH from rebalanceV2 when selling
+        AllowanceParams[] memory allowancesOtcPoc = new AllowanceParams[](1);
+        allowancesOtcPoc[0] = AllowanceParams({token: address(launchToken), spender: address(pocSell), amount: 110e18});
+        rebalanceV2.increaseAllowanceForSpenders(allowancesOtcPoc);
+        POCBuyParams[] memory pocBuyParamsArray = new POCBuyParams[](1);
+        pocBuyParamsArray[0] = POCBuyParams({
+            pocContract: address(pocBuy),
+            collateral: address(collateral1),
+            collateralAmount: 100e18,
+            minLaunchTokensOut: 0
+        });
+        POCSellParams[] memory pocSellParamsArray = new POCSellParams[](1);
+        pocSellParamsArray[0] =
+            POCSellParams({pocContract: address(pocSell), launchAmount: 110e18, minCollateralOut: 0});
+        uint256 launchBefore = launchToken.balanceOf(address(rebalanceV2));
+        rebalanceV2.adminRebalanceOTCtoOTCViaPOC(
+            IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), pocBuyParamsArray, pocSellParamsArray, 121e18
+        );
+        uint256 launchAfter = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(launchAfter, launchBefore, "Launch balance should increase after OTC->POC->OTC");
+    }
+
+    // --- adminRebalanceOTCtoOTCViaLP tests ---
+
+    function test_adminRebalanceOTCtoOTCViaLP_RevertIfNotAdmin() public {
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral2), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 100e18, 100e18);
+        collateral1.mint(address(otcSource), 100e18);
+        router.setSwapRate(address(collateral1), address(collateral2), 1e18);
+        collateral2.mint(address(router), 100e18);
+        launchToken.mint(address(otcTarget), 100e18);
+        address[] memory pathCol1ToCol2 = new address[](2);
+        pathCol1ToCol2[0] = address(collateral1);
+        pathCol1ToCol2[1] = address(collateral2);
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: pathCol1ToCol2,
+            data: "",
+            amountOutMinimum: 0
+        });
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 100e18;
+        vm.prank(address(0x456));
+        vm.expectRevert(IRebalanceV2.OnlyAdmin.selector);
+        rebalanceV2.adminRebalanceOTCtoOTCViaLP(
+            IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), swapParamsArray, amountsIn, 100e18
+        );
+    }
+
+    function test_adminRebalanceOTCtoOTCViaLP_Success() public {
+        uint256 launchAmount = 100e18;
+        MockOTCv2 otcSource = new MockOTCv2(address(collateral1), address(launchToken), address(rebalanceV2));
+        MockOTCv2 otcTarget = new MockOTCv2(address(collateral2), address(launchToken), address(rebalanceV2));
+        otcSource.setSupply(0, 100e18, launchAmount);
+        collateral1.mint(address(otcSource), 100e18);
+        // 1.01:1 swap so 100 col1 -> 101 col2 (meets min profit 1%)
+        router.setSwapRate(address(collateral1), address(collateral2), 101e17);
+        collateral2.mint(address(router), 101e18);
+        launchToken.mint(address(otcTarget), 101e18);
+        address[] memory pathCol1ToCol2B = new address[](2);
+        pathCol1ToCol2B[0] = address(collateral1);
+        pathCol1ToCol2B[1] = address(collateral2);
+        SwapParams[] memory swapParamsArray = new SwapParams[](1);
+        swapParamsArray[0] = SwapParams({
+            routerType: RouterType.UniswapV2,
+            routerAddress: address(router),
+            path: pathCol1ToCol2B,
+            data: "",
+            amountOutMinimum: 0
+        });
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 100e18;
+        uint256 launchBefore = launchToken.balanceOf(address(rebalanceV2));
+        rebalanceV2.adminRebalanceOTCtoOTCViaLP(
+            IOTCv2(address(otcSource)), IOTCv2(address(otcTarget)), swapParamsArray, amountsIn, 101e18
+        );
+        uint256 launchAfter = launchToken.balanceOf(address(rebalanceV2));
+        assertGt(launchAfter, launchBefore, "Launch balance should increase after OTC->LP->OTC");
+    }
+
     // --- onlyDao modifier tests (setAdmin) ---
 
     function test_setAdmin_RevertIfNotDao() public {

@@ -423,6 +423,40 @@ interface IRebalanceV2 {
     /// @param collateralAmount Amount of INPUT (collateral) to spend on buyback
     function adminBuybackFromOTC(IOTCv2 otc, uint256 collateralAmount) external;
 
+    /// @notice Admin OTC to OTC rebalancing (direct): supply LAUNCH to otcSource, buyback from otcTarget with same INPUT token
+    /// @param otcSource OTCv2 supply contract (supply LAUNCH, receive INPUT)
+    /// @param otcTarget OTCv2 contract (buyback with INPUT, receive LAUNCH)
+    /// @param buybackAmount Amount of INPUT to spend on buyback from otcTarget
+    function adminRebalanceOTCtoOTC(IOTCv2 otcSource, IOTCv2 otcTarget, uint256 buybackAmount) external;
+
+    /// @notice Admin OTC to OTC rebalancing via POC: supply to otcSource, convert INPUT_A to INPUT_B via POC, buyback from otcTarget
+    /// @param otcSource OTCv2 supply contract
+    /// @param otcTarget OTCv2 contract for buyback
+    /// @param pocBuyParamsArray POC buy params (INPUT_A -> LAUNCH; collateral == otcSource.INPUT_TOKEN())
+    /// @param pocSellParamsArray POC sell params (LAUNCH -> INPUT_B; collateralToken == otcTarget.INPUT_TOKEN())
+    /// @param buybackAmount Amount of INPUT_B to spend on buyback from otcTarget
+    function adminRebalanceOTCtoOTCViaPOC(
+        IOTCv2 otcSource,
+        IOTCv2 otcTarget,
+        POCBuyParams[] calldata pocBuyParamsArray,
+        POCSellParams[] calldata pocSellParamsArray,
+        uint256 buybackAmount
+    ) external;
+
+    /// @notice Admin OTC to OTC rebalancing via LP: supply to otcSource, swap INPUT_A to INPUT_B on DEX, buyback from otcTarget
+    /// @param otcSource OTCv2 supply contract
+    /// @param otcTarget OTCv2 contract for buyback
+    /// @param swapParamsArray Swap params (INPUT_A -> INPUT_B)
+    /// @param amountsIn Input amounts per swap
+    /// @param buybackAmount Amount of INPUT_B to spend on buyback from otcTarget
+    function adminRebalanceOTCtoOTCViaLP(
+        IOTCv2 otcSource,
+        IOTCv2 otcTarget,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        uint256 buybackAmount
+    ) external;
+
     /// @notice Publish action for delayed execution
     /// @dev Users can publish their action calldata which will be executable after DELAY
     /// @param actionData Future calldata with function selector and all parameters (including nonce if needed)

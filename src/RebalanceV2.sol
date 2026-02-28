@@ -667,6 +667,139 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
     }
 
     /**
+     * @notice Validate both OTCs for OTC-to-OTC rebalancing (admin, output launch, input not ETH)
+     */
+    function _validateOTCpair(IOTCv2 otcSource, IOTCv2 otcTarget) internal view {
+        require(address(otcSource) != address(0), InvalidOTC());
+        require(address(otcTarget) != address(0), InvalidOTC());
+        require(address(otcSource) != address(otcTarget), InvalidOTC());
+        require(otcSource.ADMIN_ADDRESS() == address(this), NotOTCAdmin());
+        require(otcTarget.ADMIN_ADDRESS() == address(this), NotOTCAdmin());
+        require(otcSource.OUTPUT_TOKEN() == address(launchToken), OTCOutputMismatch());
+        require(otcTarget.OUTPUT_TOKEN() == address(launchToken), OTCOutputMismatch());
+        require(otcSource.INPUT_TOKEN() != address(0), OTCInputIsEth());
+        require(otcTarget.INPUT_TOKEN() != address(0), OTCInputIsEth());
+    }
+
+    /**
+     * @notice OTC to OTC rebalancing (internal, direct): same INPUT_TOKEN, supply to source then buyback from target
+     * @param otcSource OTCv2 supply contract
+     * @param otcTarget OTCv2 contract for buyback
+     * @param buybackAmount Amount of INPUT to spend on buyback from otcTarget
+     */
+    function _rebalanceOTCtoOTC(IOTCv2 otcSource, IOTCv2 otcTarget, uint256 buybackAmount) internal {
+        _validateOTCpair(otcSource, otcTarget);
+        require(otcSource.INPUT_TOKEN() == otcTarget.INPUT_TOKEN(), InvalidCollateralToken());
+
+        (, uint256 outputAmount) = otcSource.supplies(otcSource.currentSupplyIndex());
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+
+        launchToken.safeIncreaseAllowance(address(otcSource), outputAmount);
+        otcSource.supplyOutput();
+
+        address inputToken = otcSource.INPUT_TOKEN();
+        require(IERC20(inputToken).balanceOf(address(this)) >= buybackAmount, InsufficientCollateralBalance());
+        IERC20(inputToken).safeIncreaseAllowance(address(otcTarget), buybackAmount);
+        otcTarget.buybackWithToken(buybackAmount);
+
+        _checkProfitAndDistribute(initialLaunchBalance, outputAmount);
+    }
+
+    /**
+     * @notice OTC to OTC rebalancing via POC (internal): supply to source, INPUT_A->LAUNCH (POC buy), LAUNCH->INPUT_B (POC sell), buyback from target
+     * @param otcSource OTCv2 supply contract
+     * @param otcTarget OTCv2 contract for buyback
+     * @param pocBuyParamsArray POC buy params (INPUT_A -> LAUNCH; collateral == otcSource.INPUT_TOKEN())
+     * @param pocSellParamsArray POC sell params (LAUNCH -> INPUT_B; POC collateralToken == otcTarget.INPUT_TOKEN())
+     * @param buybackAmount Amount of INPUT_B to spend on buyback from otcTarget
+     */
+    function _rebalanceOTCtoOTCViaPOC(
+        IOTCv2 otcSource,
+        IOTCv2 otcTarget,
+        POCBuyParams[] calldata pocBuyParamsArray,
+        POCSellParams[] calldata pocSellParamsArray,
+        uint256 buybackAmount
+    ) internal {
+        _validateOTCpair(otcSource, otcTarget);
+        address inputTokenSource = otcSource.INPUT_TOKEN();
+        address inputTokenTarget = otcTarget.INPUT_TOKEN();
+
+        (, uint256 outputAmount) = otcSource.supplies(otcSource.currentSupplyIndex());
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+
+        launchToken.safeIncreaseAllowance(address(otcSource), outputAmount);
+        otcSource.supplyOutput();
+
+        for (uint256 i = 0; i < pocBuyParamsArray.length; i++) {
+            require(pocBuyParamsArray[i].collateral == inputTokenSource, CollateralNotOTCInput());
+            IERC20(inputTokenSource)
+                .safeIncreaseAllowance(pocBuyParamsArray[i].pocContract, pocBuyParamsArray[i].collateralAmount);
+            uint256 minOut = (i == 0) ? pocBuyParamsArray[i].minLaunchTokensOut : 0;
+            IProofOfCapital(pocBuyParamsArray[i].pocContract)
+                .buyLaunchTokens(pocBuyParamsArray[i].collateralAmount, minOut);
+        }
+
+        for (uint256 i = 0; i < pocSellParamsArray.length; i++) {
+            require(
+                address(IProofOfCapital(pocSellParamsArray[i].pocContract).collateralToken()) == inputTokenTarget,
+                InvalidCollateralToken()
+            );
+            POCSellParams calldata pocParams = pocSellParamsArray[i];
+            uint256 minOut = (i == 0) ? pocSellParamsArray[0].minCollateralOut : 0;
+            IProofOfCapital(pocParams.pocContract).sellLaunchTokens(pocParams.launchAmount, minOut);
+        }
+
+        require(IERC20(inputTokenTarget).balanceOf(address(this)) >= buybackAmount, InsufficientCollateralBalance());
+        IERC20(inputTokenTarget).safeIncreaseAllowance(address(otcTarget), buybackAmount);
+        otcTarget.buybackWithToken(buybackAmount);
+
+        _checkProfitAndDistribute(initialLaunchBalance, outputAmount);
+    }
+
+    /**
+     * @notice OTC to OTC rebalancing via LP (internal): supply to source, swap INPUT_A->INPUT_B on DEX, buyback from target
+     * @param otcSource OTCv2 supply contract
+     * @param otcTarget OTCv2 contract for buyback
+     * @param swapParamsArray Swap params (tokenIn == otcSource.INPUT_TOKEN, tokenOut == otcTarget.INPUT_TOKEN)
+     * @param amountsIn Input amounts per swap
+     * @param buybackAmount Amount of INPUT_B to spend on buyback from otcTarget
+     */
+    function _rebalanceOTCtoOTCViaLP(
+        IOTCv2 otcSource,
+        IOTCv2 otcTarget,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        uint256 buybackAmount
+    ) internal {
+        _validateOTCpair(otcSource, otcTarget);
+        address inputTokenSource = otcSource.INPUT_TOKEN();
+        address inputTokenTarget = otcTarget.INPUT_TOKEN();
+
+        (, uint256 outputAmount) = otcSource.supplies(otcSource.currentSupplyIndex());
+        uint256 initialLaunchBalance = launchToken.balanceOf(address(this));
+
+        launchToken.safeIncreaseAllowance(address(otcSource), outputAmount);
+        otcSource.supplyOutput();
+
+        uint256 collateralBalanceBefore = IERC20(inputTokenSource).balanceOf(address(this));
+        require(swapParamsArray.length == amountsIn.length, InvalidPath());
+        uint256 sumOfAmountsIn = 0;
+        for (uint256 i = 0; i < swapParamsArray.length; i++) {
+            sumOfAmountsIn += amountsIn[i];
+            require(_getTokenIn(swapParamsArray[i]) == inputTokenSource, InvalidCollateralToken());
+            require(_getTokenOut(swapParamsArray[i]) == inputTokenTarget, InvalidCollateralToken());
+            _swap(amountsIn[i], swapParamsArray[i]);
+        }
+        require(sumOfAmountsIn == collateralBalanceBefore, InvalidCollateralToken());
+
+        require(IERC20(inputTokenTarget).balanceOf(address(this)) >= buybackAmount, InsufficientCollateralBalance());
+        IERC20(inputTokenTarget).safeIncreaseAllowance(address(otcTarget), buybackAmount);
+        otcTarget.buybackWithToken(buybackAmount);
+
+        _checkProfitAndDistribute(initialLaunchBalance, outputAmount);
+    }
+
+    /**
      * @notice Admin LP to POC rebalancing (no delays)
      * @dev Admin can execute rebalancing without any delays
      * @param swapParamsArray Array of swap parameters for DEX swaps
@@ -780,6 +913,56 @@ contract RebalanceV2 is Ownable, IRebalanceV2 {
         require(IERC20(inputToken).balanceOf(address(this)) >= collateralAmount, InsufficientCollateralBalance());
         IERC20(inputToken).safeIncreaseAllowance(address(otc), collateralAmount);
         otc.buybackWithToken(collateralAmount);
+    }
+
+    /**
+     * @notice Admin OTC to OTC rebalancing (direct): supply LAUNCH to otcSource, buyback from otcTarget with same INPUT token
+     * @param otcSource OTCv2 supply contract
+     * @param otcTarget OTCv2 contract for buyback
+     * @param buybackAmount Amount of INPUT to spend on buyback from otcTarget
+     */
+    function adminRebalanceOTCtoOTC(IOTCv2 otcSource, IOTCv2 otcTarget, uint256 buybackAmount)
+        external
+        override
+        onlyAdmin
+    {
+        _rebalanceOTCtoOTC(otcSource, otcTarget, buybackAmount);
+    }
+
+    /**
+     * @notice Admin OTC to OTC rebalancing via POC: supply to otcSource, convert INPUT_A to INPUT_B via POC, buyback from otcTarget
+     * @param otcSource OTCv2 supply contract
+     * @param otcTarget OTCv2 contract for buyback
+     * @param pocBuyParamsArray POC buy params (INPUT_A -> LAUNCH)
+     * @param pocSellParamsArray POC sell params (LAUNCH -> INPUT_B)
+     * @param buybackAmount Amount of INPUT_B to spend on buyback from otcTarget
+     */
+    function adminRebalanceOTCtoOTCViaPOC(
+        IOTCv2 otcSource,
+        IOTCv2 otcTarget,
+        POCBuyParams[] calldata pocBuyParamsArray,
+        POCSellParams[] calldata pocSellParamsArray,
+        uint256 buybackAmount
+    ) external override onlyAdmin {
+        _rebalanceOTCtoOTCViaPOC(otcSource, otcTarget, pocBuyParamsArray, pocSellParamsArray, buybackAmount);
+    }
+
+    /**
+     * @notice Admin OTC to OTC rebalancing via LP: supply to otcSource, swap INPUT_A to INPUT_B on DEX, buyback from otcTarget
+     * @param otcSource OTCv2 supply contract
+     * @param otcTarget OTCv2 contract for buyback
+     * @param swapParamsArray Swap params (INPUT_A -> INPUT_B)
+     * @param amountsIn Input amounts per swap
+     * @param buybackAmount Amount of INPUT_B to spend on buyback from otcTarget
+     */
+    function adminRebalanceOTCtoOTCViaLP(
+        IOTCv2 otcSource,
+        IOTCv2 otcTarget,
+        SwapParams[] calldata swapParamsArray,
+        uint256[] calldata amountsIn,
+        uint256 buybackAmount
+    ) external override onlyAdmin {
+        _rebalanceOTCtoOTCViaLP(otcSource, otcTarget, swapParamsArray, amountsIn, buybackAmount);
     }
 
     /**
